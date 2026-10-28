@@ -2202,6 +2202,88 @@ mod tests {
         assert_eq!(app.automation_op(r#"{"op":"entities"}"#)["total"], 0);
     }
     #[test]
+    fn control_property_sets_dynamic_visibility_with_tooltip() {
+        use crate::scene::block_visibility;
+        use codec::entities::{Insert, Line};
+        use codec::types::Vector3;
+        use codec::EntityType;
+
+        let mut app = OpenCADStudio::new_for_test();
+        assert_eq!(request(&mut app, json!({"op":"new"}))["ok"], true);
+        let i = app.active_tab;
+        let scene = &mut app.tabs[i].scene;
+        scene.define_block_raw(
+            "VISIBILITY_TEST",
+            Vector3::ZERO,
+            vec![
+                EntityType::Line(Line::from_coords(0.0, 0.0, 0.0, 5.0, 0.0, 0.0)),
+                EntityType::Line(Line::from_coords(0.0, 3.0, 0.0, 5.0, 3.0, 0.0)),
+            ],
+        );
+        let definition = scene.document.block_records.get("VISIBILITY_TEST").unwrap();
+        let owner = definition.handle;
+        let first = definition.entity_handles[0];
+        let second = definition.entity_handles[1];
+        let parameter =
+            block_visibility::create(&mut scene.document, owner, Vector3::ZERO).unwrap();
+        let other =
+            block_visibility::add_state(&mut scene.document, parameter, "Other", 0).unwrap();
+        assert_eq!(other, 1);
+        block_visibility::set_visible(&mut scene.document, parameter, 0, &[second], false);
+        block_visibility::set_visible(&mut scene.document, parameter, other, &[first], false);
+        block_visibility::finish_editing(&mut scene.document, owner);
+        let reference = scene.add_entity(EntityType::Insert(Insert::new(
+            "VISIBILITY_TEST",
+            Vector3::ZERO,
+        )));
+        let selected = request(&mut app, json!({"op":"select","type":"INSERT"}));
+        assert_eq!(selected["ok"], true, "{selected}");
+        assert_eq!(app.tabs[i].selected_handle, Some(reference));
+        let depth = app.tabs[i].history.undo_stack.len();
+
+        let changed = request(
+            &mut app,
+            json!({"op":"property","field":"dyn_visibility","value":"Other"}),
+        );
+        assert_eq!(changed["ok"], true, "{changed}");
+        let doc = &app.tabs[i].scene.document;
+        let EntityType::Insert(insert) = doc.get_entity(reference).unwrap() else {
+            panic!("expected the block reference");
+        };
+        assert_ne!(insert.block_name, "VISIBILITY_TEST");
+        let visible: Vec<_> = doc
+            .entities_in_block(&insert.block_name)
+            .filter(|entity| !entity.common().invisible)
+            .collect();
+        assert_eq!(visible.len(), 1);
+        let EntityType::Line(line) = visible[0] else {
+            panic!("expected the alternative line");
+        };
+        assert_eq!(line.start.y, 3.0);
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        let row = OpenCADStudio::visibility_property(doc, reference).unwrap();
+        let row = property_json(&row);
+        assert_eq!(row["kind"], "choice");
+        assert_eq!(row["value"], "Other");
+        assert_eq!(row["options"], json!(["VisibilityState0", "Other"]));
+
+        let invalid = request(
+            &mut app,
+            json!({"op":"property","field":"dyn_visibility","value":"Missing"}),
+        );
+        assert_eq!(invalid["code"], "invalid_choice", "{invalid}");
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        assert_eq!(request(&mut app, json!({"op":"undo"}))["ok"], true);
+        let EntityType::Insert(insert) = app.tabs[i].scene.document.get_entity(reference).unwrap()
+        else {
+            panic!("expected the restored block reference");
+        };
+        assert_eq!(insert.block_name, "VISIBILITY_TEST");
+        let row =
+            OpenCADStudio::visibility_property(&app.tabs[i].scene.document, reference).unwrap();
+        assert_eq!(property_json(&row)["value"], "VisibilityState0");
+    }
+    #[test]
     fn selection_changes_are_published_to_the_event_stream() {
         let mut app = OpenCADStudio::new_for_test();
         request(&mut app, json!({"op":"new"}));

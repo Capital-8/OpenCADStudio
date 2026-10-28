@@ -58,7 +58,10 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
         PropValue::EditText(v) => ("number", json!(v), Value::Null),
         PropValue::PlainText(v) => ("text", json!(v), Value::Null),
         PropValue::Hyperlink(v) => ("hyperlink", json!(v), Value::Null),
-        PropValue::Choice { selected, options } => ("choice", json!(selected), json!(options)),
+        PropValue::Choice { selected, options }
+        | PropValue::ChoiceWithTooltip {
+            selected, options, ..
+        } => ("choice", json!(selected), json!(options)),
         PropValue::EditChoice { value, options } => {
             ("editable_choice", json!(value), json!(options))
         }
@@ -1237,7 +1240,7 @@ impl OpenCADStudio {
                 let commit = self.update(Message::PropGeomCommit(p.field));
                 Task::batch([input, commit])
             }
-            PropValue::Choice { options, .. } => {
+            PropValue::Choice { options, .. } | PropValue::ChoiceWithTooltip { options, .. } => {
                 if !options.contains(&value) {
                     return Err(failure(
                         "invalid_choice",
