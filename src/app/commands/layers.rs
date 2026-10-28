@@ -1442,6 +1442,36 @@ impl OpenCADStudio {
     /// they differ from the layer. Layers the state turns off are frozen in
     /// the viewport; lock and plot have no per-viewport form and apply to the
     /// drawing.
+    /// Give `layer` its own `color` in the layout viewport `viewport`.
+    pub(in crate::app) fn set_layer_viewport_color(
+        &mut self,
+        i: usize,
+        layer: &str,
+        viewport: codec::Handle,
+        color: codec::types::Color,
+    ) {
+        use codec::objects::{KnownXRecordKind as Kind, XRecordValue as Value};
+        let Some(layer) = self.tabs[i].scene.document.layers.get(layer).map(|l| l.handle) else {
+            return;
+        };
+        let Some(packed) = crate::scene::view::render::pack_layer_override_color(&color) else {
+            return;
+        };
+        self.push_undo_snapshot(i, "VP Color".to_string());
+        let scene = &mut self.tabs[i].scene;
+        scene.document.set_layer_viewport_override(
+            layer,
+            Kind::LayerViewportColorOverride,
+            viewport,
+            Value::Int32(packed),
+        );
+        scene.bump_geometry();
+        self.tabs[i].dirty = true;
+        let doc_layers = self.tabs[i].scene.document.layers.clone();
+        let vp_info = self.tabs[i].scene.viewport_list();
+        self.tabs[i].layers.sync_with_viewports(&doc_layers, vp_info);
+    }
+
     pub(in crate::app) fn restore_layer_state_here(&mut self, i: usize, name: &str) -> usize {
         use codec::layer_state::LayerStateMask as Mask;
         use codec::objects::{KnownXRecordKind as Kind, XRecordValue as Value};
@@ -1572,3 +1602,4 @@ impl OpenCADStudio {
         restored
     }
 }
+

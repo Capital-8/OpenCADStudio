@@ -26,6 +26,15 @@ pub struct VpCol {
     pub label: String,
 }
 
+/// A layout viewport as the Layer Manager shows it: its frozen layers and
+/// its layer colour overrides.
+pub struct ViewportLayers {
+    pub handle: Handle,
+    pub label: String,
+    pub frozen: Vec<Handle>,
+    pub colors: Vec<(Handle, AcadColor)>,
+}
+
 /// Sortable column in the Layer Manager table. Clicking a header sorts by
 /// that column; clicking the active header again flips the direction (#133).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -70,6 +79,8 @@ pub struct Layer {
     pub transparency: i32,
     /// Freeze state per-viewport, indexed parallel to LayerPanel::vp_cols.
     pub vp_frozen: Vec<bool>,
+    /// Colour override per-viewport, parallel to `vp_frozen`.
+    pub vp_colors: Vec<Option<AcadColor>>,
 }
 
 impl Layer {
@@ -87,6 +98,7 @@ impl Layer {
             lineweight: LineWeight::Default,
             transparency: 0,
             vp_frozen: vec![],
+            vp_colors: vec![],
         }
     }
 }
@@ -161,7 +173,7 @@ impl LayerPanel {
     pub fn sync_with_viewports(
         &mut self,
         doc_layers: &Table<DocLayer>,
-        vp_info: Vec<(Handle, String, Vec<Handle>)>,
+        vp_info: Vec<ViewportLayers>,
     ) {
         // The rebuild below re-indexes rows, so capture the selection by name
         // first and re-resolve it after (indices alone would go stale).
@@ -177,9 +189,9 @@ impl LayerPanel {
 
         self.vp_cols = vp_info
             .iter()
-            .map(|(h, label, _)| VpCol {
-                handle: *h,
-                label: label.clone(),
+            .map(|vp| VpCol {
+                handle: vp.handle,
+                label: vp.label.clone(),
             })
             .collect();
 
@@ -191,7 +203,16 @@ impl LayerPanel {
                 let layer_handle = l.handle;
                 let vp_frozen = vp_info
                     .iter()
-                    .map(|(_, _, frozen_handles)| frozen_handles.contains(&layer_handle))
+                    .map(|vp| vp.frozen.contains(&layer_handle))
+                    .collect();
+                let vp_colors = vp_info
+                    .iter()
+                    .map(|vp| {
+                        vp.colors
+                            .iter()
+                            .find(|(layer, _)| *layer == layer_handle)
+                            .map(|(_, color)| *color)
+                    })
                     .collect();
                 Layer {
                     name: l.name.clone(),
@@ -210,6 +231,7 @@ impl LayerPanel {
                     lineweight: l.line_weight,
                     transparency: (l.transparency.as_percent() * 100.0).round() as i32,
                     vp_frozen,
+                    vp_colors,
                 }
             })
             .collect();
@@ -474,7 +496,7 @@ impl LayerPanel {
                 text(vp.label.as_str())
                     .size(10)
                     .style(muted_style)
-                    .width(Length::Fixed(COL_ICON)),
+                    .width(Length::Fixed(COL_ICON * 2.0 + 4.0)),
             );
         }
 
@@ -961,16 +983,32 @@ fn layer_row<'a>(
     .align_y(iced::Center);
 
     // Per-viewport freeze columns
-    for (vp_idx, _vp_col) in vp_cols.iter().enumerate() {
+    for (vp_idx, vp_col) in vp_cols.iter().enumerate() {
         let is_vp_frozen = layer.vp_frozen.get(vp_idx).copied().unwrap_or(false);
         let vp_frz_svg = crate::ui::icons::layer_vp_freeze(is_vp_frozen);
-        row_content = row_content.push(
-            container(svg_btn(
-                vp_frz_svg,
-                Message::LayerToggleVpFreeze(lname.clone(), vp_idx),
+        // The viewport's colour for this layer: its override, else the layer's.
+        let vp_color = layer.vp_colors.get(vp_idx).copied().flatten();
+        let shown = vp_color.unwrap_or(layer.color);
+        let vp_color_btn = button(crate::ui::color_select::swatch(iced_color_from_acad(&shown)))
+            .on_press(Message::OpenColorWindow(
+                crate::app::ColorPickTarget::LayerViewport(lname.clone(), vp_col.handle),
+                shown,
             ))
-            .width(Length::Fixed(COL_ICON))
-            .align_x(iced::Center),
+            .padding(2)
+            .style(button::text);
+        row_content = row_content.push(
+            row![
+                container(svg_btn(
+                    vp_frz_svg,
+                    Message::LayerToggleVpFreeze(lname.clone(), vp_idx),
+                ))
+                .width(Length::Fixed(COL_ICON))
+                .align_x(iced::Center),
+                container(vp_color_btn)
+                    .width(Length::Fixed(COL_ICON))
+                    .align_x(iced::Center),
+            ]
+            .spacing(4),
         );
     }
 

@@ -6920,7 +6920,7 @@ impl Scene {
     }
 
     /// List of user viewports in the current layout: (handle, label, frozen_layer_handles).
-    pub fn viewport_list(&self) -> Vec<(codec::Handle, String, Vec<codec::Handle>)> {
+    pub fn viewport_list(&self) -> Vec<crate::ui::window::layers::ViewportLayers> {
         if self.current_layout == "Model" {
             return vec![];
         }
@@ -6950,6 +6950,37 @@ impl Scene {
             .collect();
         result.sort_by_key(|(_, label, _)| label.clone());
         result
+            .into_iter()
+            .map(|(handle, label, frozen)| {
+                let colors = self
+                    .document
+                    .layers
+                    .iter()
+                    .filter_map(|layer| {
+                        self.document
+                            .layer_viewport_overrides(
+                                layer.handle,
+                                codec::objects::KnownXRecordKind::LayerViewportColorOverride,
+                            )
+                            .into_iter()
+                            .find(|(viewport, _)| *viewport == handle)
+                            .and_then(|(_, value)| match value {
+                                codec::objects::XRecordValue::Int32(value) => Some((
+                                    layer.handle,
+                                    crate::scene::view::render::layer_override_color(value),
+                                )),
+                                _ => None,
+                            })
+                    })
+                    .collect();
+                crate::ui::window::layers::ViewportLayers {
+                    handle,
+                    label,
+                    frozen,
+                    colors,
+                }
+            })
+            .collect()
     }
 
     /// Count of user viewports (id > 1) in the current layout.

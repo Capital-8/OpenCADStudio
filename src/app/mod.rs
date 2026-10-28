@@ -2149,6 +2149,8 @@ pub enum ColorPickTarget {
     Ribbon,
     /// A layer's colour, by layer name.
     Layer(String),
+    /// A layer's colour override in one layout viewport.
+    LayerViewport(String, codec::Handle),
     /// A saved layer-state layer's colour, by editor row index.
     LayerState(usize),
     /// The MText editor's selection (or global) colour.

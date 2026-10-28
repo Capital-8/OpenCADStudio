@@ -1272,6 +1272,10 @@ impl OpenCADStudio {
                     None => None,
                 }
             }
+            Some(crate::app::ColorPickTarget::LayerViewport(layer, viewport)) => {
+                self.set_layer_viewport_color(self.active_tab, &layer, viewport, color);
+                None
+            }
             Some(crate::app::ColorPickTarget::LayerState(idx)) => {
                 Some(Message::LayerStateEditorLayerColor(idx, color))
             }
