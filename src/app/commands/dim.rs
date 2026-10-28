@@ -646,7 +646,13 @@ impl OpenCADStudio {
                     "AIMLEADEREDITREMOVE" => "AIMLEADEREDITREMOVE",
                     _ => "MLEADEREDIT",
                 };
-                let cmd = MLeaderEditCommand::new(name);
+                let mut cmd = MLeaderEditCommand::new(name);
+                // A single preselected multileader is the one edited.
+                let selected = self.tabs[i].scene.selected_entities();
+                if let [(handle, codec::EntityType::MultiLeader(ml))] = selected.as_slice() {
+                    cmd = cmd.with_target(*handle, (**ml).clone());
+                    self.tabs[i].scene.replace_selection(Default::default());
+                }
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }

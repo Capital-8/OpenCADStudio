@@ -55,6 +55,13 @@ impl OpenCADStudio {
                         Some(codec::EntityType::Hatch(_))
                     )
                 }),
+            single_mleader: tab.scene.selected.len() == 1
+                && tab.scene.selected.iter().all(|handle| {
+                    matches!(
+                        tab.scene.document.get_entity(*handle),
+                        Some(codec::EntityType::MultiLeader(_))
+                    )
+                }),
             selected_constraint: tab.scene.selected_constraint,
             isolation_active: tab.scene.is_isolation_active(),
             recent_cmds: self

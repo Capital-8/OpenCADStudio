@@ -77,6 +77,12 @@ impl MLeaderEditCommand {
         }
     }
 
+    /// Starts on `ml` (the preselected multileader) instead of asking for one.
+    pub fn with_target(mut self, handle: Handle, ml: MultiLeader) -> Self {
+        self.target = Some((handle, ml));
+        self
+    }
+
     /// The leader line nearest `pick`, when the pick lands on it.
     fn leader_at(ml: &MultiLeader, pick: Vector3) -> Option<(usize, usize)> {
         let tolerance = (ml.context.arrowhead_size.max(ml.arrowhead_size) * 1.5).max(1.0e-6);

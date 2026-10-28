@@ -379,6 +379,8 @@ pub enum MenuContext {
         has_selection: bool,
         /// Exactly one hatch is selected: its edit row is offered.
         single_hatch: bool,
+        /// Exactly one multileader is selected: its leader rows are offered.
+        single_mleader: bool,
         selected_constraint: Option<ConstraintId>,
         isolation_active: bool,
         /// Recently run commands, newest first.
@@ -403,6 +405,7 @@ pub fn build_context_menu(ctx: &MenuContext, open_submenu: Option<SubmenuId>) ->
         MenuContext::Idle {
             has_selection,
             single_hatch,
+            single_mleader,
             selected_constraint,
             isolation_active,
             recent_cmds,
@@ -413,6 +416,7 @@ pub fn build_context_menu(ctx: &MenuContext, open_submenu: Option<SubmenuId>) ->
         } => idle_rows(
             *has_selection,
             *single_hatch,
+            *single_mleader,
             *selected_constraint,
             *isolation_active,
             recent_cmds,
@@ -578,6 +582,7 @@ fn navigation_rows(transparent: bool) -> Vec<MenuRow> {
 fn idle_rows(
     has_selection: bool,
     single_hatch: bool,
+    single_mleader: bool,
     selected_constraint: Option<ConstraintId>,
     isolation_active: bool,
     recent_cmds: &[String],
@@ -667,6 +672,16 @@ fn idle_rows(
             rows.push(MenuRow::Item(cmd(
                 t!("Edit Hatch").into_owned(),
                 "HATCHEDIT",
+            )));
+        }
+        if single_mleader {
+            rows.push(MenuRow::Item(cmd(
+                t!("Add Leader").into_owned(),
+                "AIMLEADEREDITADD",
+            )));
+            rows.push(MenuRow::Item(cmd(
+                t!("Remove Leader").into_owned(),
+                "AIMLEADEREDITREMOVE",
             )));
         }
         rows.push(MenuRow::Item(
@@ -1012,6 +1027,7 @@ mod tests {
         MenuContext::Idle {
             has_selection,
             single_hatch: false,
+            single_mleader: false,
             selected_constraint: None,
             isolation_active: false,
             recent_cmds: vec!["LINE".into(), "CIRCLE".into()],

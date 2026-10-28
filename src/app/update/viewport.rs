@@ -9113,6 +9113,7 @@ mod hatch_double_click_tests {
             app.context_menu_context(),
             MenuContext::Idle {
                 single_hatch: true,
+                single_mleader: false,
                 ..
             }
         ));
