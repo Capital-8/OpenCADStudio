@@ -41,6 +41,8 @@ impl OpenCADStudio {
                 &rows,
                 first_linked_row,
             );
+            // The stored picture no longer shows the cells: draw from them.
+            table.block_record_handle = None;
             annotation_data::stamp_data_link_handle(document, link_handle);
             changed.push(table_handle);
         }
