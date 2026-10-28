@@ -4232,6 +4232,8 @@ pub enum Message {
     DraftingSettingsCloseKeep,
     /// Options window: commit the changes made so far.
     OptionsApply,
+    /// Options window: every preference back to its default, uncommitted.
+    OptionsRestoreDefaults,
     /// Options window: commit and close.
     OptionsOk,
     /// Options window: close, asking first when changes would be lost.

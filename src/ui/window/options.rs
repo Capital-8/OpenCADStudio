@@ -349,6 +349,11 @@ pub fn view_window<'a>(
         },
     );
     let close = dialog_button(crate::tr!("action", "close"), Message::OptionsClose, false);
+    let restore = dialog_button(
+        crate::t!("Restore Defaults"),
+        Message::OptionsRestoreDefaults,
+        false,
+    );
 
     let general = column![
         text(crate::tr!("options", "language-section")).size(15),
@@ -1967,7 +1972,7 @@ pub fn view_window<'a>(
         // controls at the trailing edge of the Options content.
         scrollable(content).spacing(8).height(Fill),
         Space::new().height(12),
-        row![Space::new().width(Fill), ok, apply, close].spacing(8),
+        row![restore, Space::new().width(Fill), ok, apply, close].spacing(8),
     ]
     .width(Fill)
     .height(sizing.height);

@@ -9935,6 +9935,10 @@ impl OpenCADStudio {
                 self.options_apply();
                 Task::none()
             }
+            Message::OptionsRestoreDefaults => {
+                self.options_restore_defaults();
+                Task::none()
+            }
             Message::OptionsOk => {
                 self.options_apply();
                 self.options_forget();
