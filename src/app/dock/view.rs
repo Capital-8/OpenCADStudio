@@ -519,7 +519,11 @@ impl OpenCADStudio {
                 crate::ui::window::sheet_set::view(&self.sheet_set, width, chrome)
             }
             crate::ui::dock::PanelId::Layers => {
-                tab.layers.view_panel(self.layer_name_col_w, width, chrome)
+                let active_vp = tab
+                    .scene
+                    .active_viewport
+                    .filter(|_| tab.scene.current_layout != "Model");
+                tab.layers.view_panel(self.layer_name_col_w, width, chrome, active_vp)
             }
             crate::ui::dock::PanelId::Laywalk => self.layer_walk_view(tab, width, chrome),
             crate::ui::dock::PanelId::QuickCalc => self.quick_calc_view(tab, width, chrome),
