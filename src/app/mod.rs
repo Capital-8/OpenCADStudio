@@ -671,6 +671,8 @@ pub(super) struct OpenCADStudio {
     /// Selection cycling: clicking where objects overlap opens a list box
     /// to pick which one; the pick is added to the current selection.
     selection_cycling: bool,
+    /// OSNAPZ (see `Settings::osnap_z`).
+    osnap_z: bool,
     /// PICKADD (#226): true (default) = clicks accumulate; false = OS-style
     /// replace-on-click with Shift toggling.
     pick_add: bool,
@@ -5376,6 +5378,7 @@ impl OpenCADStudio {
             quick_properties: false,
             quick_properties_anchor: Point::new(12.0, 12.0),
             selection_cycling: false,
+            osnap_z: false,
             pick_add: true,
             select_remove_mode: false,
             last_layer_translation: None,

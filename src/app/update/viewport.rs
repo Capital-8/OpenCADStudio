@@ -2303,6 +2303,7 @@ impl OpenCADStudio {
             // Normal snap: only the rest of the drawing participates here.
             // The frozen grip-reference geometry deliberately stays out, so it cannot
             // pull the edited point back onto its old shape.
+            self.sync_osnap_z_plane(i);
             let snap_hit = self.snapper.snap(
                 raw,
                 p,
@@ -2904,6 +2905,7 @@ impl OpenCADStudio {
                 self.snapper.osnap_radius_px,
             );
             let (go, gr) = self.drafting_grid_basis(i);
+            self.sync_osnap_z_plane(i);
             let snap_hit = self.snapper.snap(
                 cursor_world,
                 p,
@@ -4714,7 +4716,8 @@ impl OpenCADStudio {
         // No rubber-band origin (perp/extension feet don't apply to a free drag).
         self.snapper.from_point = None;
         let (go, gr) = self.drafting_grid_basis(i);
-        let snap_hit = self.snapper.snap(
+        self.sync_osnap_z_plane(i);
+            let snap_hit = self.snapper.snap(
             raw,
             p,
             &snap_candidates,
@@ -11432,5 +11435,17 @@ mod navigation_style_tests {
         let _ = app.update(Message::ViewportMiddleRelease);
         assert!(!app.nav_zoom_latched);
         assert!(!app.tabs[i].scene.selection.borrow().input.middle_down);
+    }
+}
+
+impl OpenCADStudio {
+    /// OSNAPZ: object snaps land on the current UCS at the current
+    /// elevation while it is on.
+    pub(in crate::app) fn sync_osnap_z_plane(&mut self, i: usize) {
+        self.snapper.osnap_z_plane = self.osnap_z.then(|| {
+            let (origin, _, _, normal) = self.tabs[i].ucs_xform().axes();
+            let elevation = self.tabs[i].scene.document.header.elevation;
+            (origin + normal * elevation, normal)
+        });
     }
 }

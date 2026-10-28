@@ -380,6 +380,10 @@ pub struct Snapper {
     /// the override mode and `snap_enabled` is forced on — the override works
     /// even with running osnap off (#337).
     override_saved: Option<(HashSet<SnapType>, bool)>,
+    /// OSNAPZ: object snaps land on this plane (a point on it and its
+    /// normal: the current UCS at the current elevation) instead of keeping
+    /// the snapped object's height. `None` keeps the object's point.
+    pub osnap_z_plane: Option<(DVec3, DVec3)>,
 }
 
 impl Default for Snapper {
@@ -423,6 +427,7 @@ impl Default for Snapper {
             parallel_ref: None,
             parallel_dwell: None,
             override_saved: None,
+            osnap_z_plane: None,
         }
     }
 }
@@ -1306,6 +1311,7 @@ impl Snapper {
             parallel_ref: None,
             parallel_dwell: None,
             override_saved: None,
+            osnap_z_plane: None,
         };
         // Tangent-only: Grid is disabled here, so the grid basis is irrelevant.
         tmp.snap(
@@ -1560,6 +1566,18 @@ impl Snapper {
             construction_ray,
             &[],
         )
+        .map(|hit| self.on_osnap_z_plane(hit))
+    }
+
+    /// The snapped point moved onto the OSNAPZ plane along its normal; a grid
+    /// point already lies on the drafting plane.
+    pub fn on_osnap_z_plane(&self, mut hit: SnapResult) -> SnapResult {
+        if let Some((origin, normal)) = self.osnap_z_plane {
+            if hit.snap_type != SnapType::Grid {
+                hit.world -= normal * (hit.world - origin).dot(normal);
+            }
+        }
+        hit
     }
 
     /// Find the best snap candidate while also testing extra construction rays

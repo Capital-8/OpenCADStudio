@@ -859,6 +859,9 @@ pub struct UserSettings {
     pub ucs_icon_at_origin: bool,
     /// Selection cycling: a click where objects overlap opens a picker.
     pub selection_cycling: bool,
+    /// OSNAPZ: object snaps take the current elevation instead of the
+    /// snapped object's Z.
+    pub osnap_z: bool,
     /// CURSORTYPE: crosshair or the platform pointer over the drawing.
     pub cursor_type: CursorType,
     /// Explicit crosshair RGB. `None` keeps automatic background contrast.
@@ -1313,6 +1316,7 @@ impl Default for UserSettings {
             show_ucs_icon: true,
             ucs_icon_at_origin: true,
             selection_cycling: false,
+            osnap_z: false,
             double_click_block_refedit: false,
             double_click_block_attedit: true,
             right_click_mode: RightClickMode::ShortcutMenu,

@@ -1242,6 +1242,7 @@ impl OpenCADStudio {
                     | "TRIMEXTENDMODE"
                     | "PELLIPSE"
                     | "SELECTIONCYCLING"
+                    | "OSNAPZ"
                     | "UCSDETECT"
                     | "SURFACEASSOCIATIVITY"
                     | "DGNIMPORTMODE"
@@ -1879,6 +1880,34 @@ impl OpenCADStudio {
                             Some(None) => {
                                 self.command_line
                                     .push_error(crate::t!("Requires 0 or 1 only.").as_ref());
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                            None => {
+                                self.command_line.push_output(&prompt);
+                                self.pending_setvar = Some(name.clone());
+                            }
+                        }
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    if name == "OSNAPZ" {
+                        let current = i16::from(self.osnap_z);
+                        let prompt = format!("Enter new value for OSNAPZ <{current}>:");
+                        match value
+                            .as_deref()
+                            .map(|v| v.trim().parse::<i16>().ok().filter(|v| (0..=1).contains(v)))
+                        {
+                            Some(Some(mode)) => {
+                                if self.osnap_z != (mode != 0) {
+                                    self.osnap_z = mode != 0;
+                                    self.persist_settings_if_changed();
+                                }
+                            }
+                            Some(None) => {
+                                let (min, max) = (0, 1);
+                                self.command_line.push_error(&crate::tf!(
+                                    "Requires an integer between {min} and {max}."
+                                ));
                                 self.command_line.push_output(&prompt);
                                 self.pending_setvar = Some(name.clone());
                             }
