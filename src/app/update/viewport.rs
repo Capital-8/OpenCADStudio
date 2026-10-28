@@ -903,6 +903,36 @@ impl OpenCADStudio {
         point.is_finite().then_some(point)
     }
 
+    /// A deferred solid pick: a face seen edge-on under the cursor first,
+    /// since it draws as a line the ray never meets, then the face the ray
+    /// meets.
+    fn solid_pick_point(
+        &self,
+        i: usize,
+        handle: Handle,
+        edit_cam: &Option<crate::scene::view::camera::Camera>,
+        cursor: iced::Point,
+        bounds: iced::Rectangle,
+        view_rot: glam::Mat4,
+        eye: glam::DVec3,
+    ) -> Option<glam::DVec3> {
+        let scene = &self.tabs[i].scene;
+        let camera = edit_cam.clone().unwrap_or_else(|| scene.camera.borrow().clone());
+        let view = (camera.rotation * glam::Vec3::NEG_Z).as_dvec3();
+        let reach = crate::ui::overlay::pick_box_aperture_px(self.pick_box) as f64
+            * camera.ortho_size() as f64
+            * 2.0
+            / (bounds.height as f64).max(1.0);
+        crate::scene::model::presspull_model::edge_on_face_point(
+            scene,
+            handle,
+            camera.pick_on_target_plane(cursor, bounds),
+            view,
+            reach,
+        )
+        .or_else(|| scene.solid_click_point_for(cursor, view_rot, eye, bounds, handle))
+    }
+
     /// Projection + hit-test wires for the active pane. Inside a floating
     /// viewport (`edit_cam` Some) it returns the viewport camera and the live
     /// **model** wires, so wire / hatch picking lands on the entity under the
@@ -6236,6 +6266,19 @@ impl OpenCADStudio {
                             candidate_handles.as_ref(),
                         )
                     })?
+                })
+                .or_else(|| {
+                    // A solid's edge: a face seen edge-on draws only there.
+                    include_fills.then(|| {
+                        self.tabs[i].scene.solid_edge_hover_hit(
+                            p,
+                            view_rot2,
+                            eye2,
+                            bounds,
+                            candidate_handles.as_ref(),
+                            pick_aperture,
+                        )
+                    })?
                 });
                 // A dimension pick inside a viewport measures the model
                 // geometry shown there, not the viewport entity itself.
@@ -6265,9 +6308,7 @@ impl OpenCADStudio {
                         .as_ref()
                         .is_some_and(|command| command.entity_pick_uses_surface_point());
                     let entity_pick_point = if uses_surface_point {
-                        self.tabs[i]
-                            .scene
-                            .solid_click_point_for(p, view_rot2, eye2, bounds, handle)
+                        self.solid_pick_point(i, handle, &edit_cam, p, bounds, view_rot2, eye2)
                             .or_else(|| {
                                 self.tabs[i]
                                     .active_cmd
@@ -8199,13 +8240,19 @@ properties={:.1}ms picked={}",
         if hovered.is_none() {
             let started = Instant::now();
             hovered = if deferred_command {
-                self.tabs[i].scene.solid_click_hit(
-                    p,
-                    view_rot,
-                    eye,
-                    bounds,
-                    candidate_handles.as_ref(),
-                )
+                self.tabs[i]
+                    .scene
+                    .solid_click_hit(p, view_rot, eye, bounds, candidate_handles.as_ref())
+                    .or_else(|| {
+                        self.tabs[i].scene.solid_edge_hover_hit(
+                            p,
+                            view_rot,
+                            eye,
+                            bounds,
+                            candidate_handles.as_ref(),
+                            crate::ui::overlay::pick_box_aperture_px(self.pick_box),
+                        )
+                    })
             } else {
                 self.tabs[i].scene.solid_edge_hover_hit(
                     p,
@@ -8220,9 +8267,7 @@ properties={:.1}ms picked={}",
         }
         if deferred_command {
             let surface_point = hovered.and_then(|handle| {
-                self.tabs[i]
-                    .scene
-                    .solid_click_point_for(p, view_rot, eye, bounds, handle)
+                self.solid_pick_point(i, handle, &edit_cam, p, bounds, view_rot, eye)
                     .or_else(|| self.profile_pick_point(i, handle, &edit_cam, p, bounds))
             });
             let point = surface_point.unwrap_or(hover_world);
