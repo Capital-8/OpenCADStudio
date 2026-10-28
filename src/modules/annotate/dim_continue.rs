@@ -14,7 +14,7 @@ use kernel::space::Plane;
 use crate::command::{
     CadCommand, CmdOption, CmdResult, DimensionAssociationInput, DimensionPreview,
 };
-use super::dim_baseline::SourceStyle;
+use super::dim_baseline::{OriginPicks, SourceStyle};
 use crate::modules::{IconKind, ModuleEvent, ToolDef};
 use crate::scene::model::wire_model::WireModel;
 
@@ -68,6 +68,8 @@ pub struct DimContinueCommand {
     preserve_base_style: bool,
     /// Run from DIM's Continue option: its own wording.
     in_dim: bool,
+    /// DIM's Continue: dimensions a typed extension line origin picks.
+    origin_picks: OriginPicks,
 }
 
 impl DimContinueCommand {
@@ -78,11 +80,19 @@ impl DimContinueCommand {
             history: Vec::new(),
             preserve_base_style,
             in_dim: false,
+            origin_picks: OriginPicks::default(),
         };
         if let Some(entity) = recent {
             let _ = command.install_base(&entity, None);
         }
         command
+    }
+
+    /// The dimensions a typed point on an extension line origin picks as
+    /// the dimension to continue (DIM's Continue).
+    pub fn with_origin_picks(mut self, origin_picks: OriginPicks) -> Self {
+        self.origin_picks = origin_picks;
+        self
     }
 
     /// DIM's Continue: the dimension to continue is picked.
@@ -365,7 +375,19 @@ impl CadCommand for DimContinueCommand {
         CmdResult::NeedPoint
     }
 
+    fn entity_pick_accepts_points(&self) -> bool {
+        self.in_dim
+    }
+
     fn on_point(&mut self, point: DVec3) -> CmdResult {
+        // DIM's Continue: a typed extension line origin picks its dimension;
+        // any other point asks again.
+        if self.base.is_none() {
+            if let Some(entity) = self.origin_picks.at(point).cloned() {
+                let _ = self.install_base(&entity, Some(point));
+            }
+            return CmdResult::NeedPoint;
+        }
         let Some(dimension) = self.build_dimension(point) else {
             return CmdResult::NeedPoint;
         };
