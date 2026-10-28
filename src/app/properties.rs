@@ -1840,6 +1840,7 @@ impl OpenCADStudio {
     /// the source line points at the owning record row either way — the
     /// values live on the record layer, the host never invents semantics
     /// for a name or kind the declaration does not spell.
+    #[cfg(not(target_arch = "wasm32"))]
     fn plugin_class_parameter_section(
         &self,
         i: usize,
@@ -2881,7 +2882,10 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
             panel.field_key_by_id = crate::ui::properties::build_field_key_map(&panel.sections);
             let new_handles: Vec<codec::Handle> = selected.iter().map(|(h, _)| *h).collect();
             // The plugin class parameter surface (API v16): one stamped
-            // selection rides its class's declared rows.
+            // selection rides its class's declared rows. Only the native build
+            // carries plugin classes (the wasm build has no plugin registry the
+            // section could bind to).
+            #[cfg(not(target_arch = "wasm32"))]
             if new_handles.len() == 1 {
                 if let Some(section) = self.plugin_class_parameter_section(i, new_handles[0]) {
                     panel.sections.push(section);
