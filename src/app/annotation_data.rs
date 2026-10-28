@@ -880,13 +880,27 @@ pub(crate) fn data_link_write_path(doc: &Document, handle: Handle) -> Result<Pat
 }
 
 /// The objects the extraction reads from a drawing: model space objects
-/// other than block definitions' own markers.
+/// other than block definitions' own markers and the drawing of a table,
+/// dimension or other object kept in an anonymous block (a table is one
+/// object, not its lines and texts).
 fn extraction_entities<'a>(
     doc: &'a Document,
     allowed_handles: Option<&'a BTreeSet<Handle>>,
 ) -> impl Iterator<Item = &'a EntityType> + 'a {
+    let anonymous: BTreeSet<Handle> = doc
+        .block_records
+        .iter()
+        .filter(|record| {
+            let name = record.name.to_ascii_lowercase();
+            name.starts_with('*')
+                && !name.starts_with("*model_space")
+                && !name.starts_with("*paper_space")
+        })
+        .map(|record| record.handle)
+        .collect();
     doc.entities().filter(move |entity| {
         !matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_))
+            && !anonymous.contains(&entity.common().owner_handle)
             && allowed_handles.is_none_or(|handles| handles.contains(&entity.common().handle))
     })
 }
@@ -2692,36 +2706,68 @@ impl OpenCADStudio {
             rows.iter().skip(1).cloned().collect()
         };
         let columns = body.iter().map(Vec::len).max().unwrap_or(1).max(1);
-        // Rows are a line and a third of their text high plus both margins
-        // (measured: 4.5 text with 1.5 margins -> 9, the 6 title -> 11).
-        let (text_heights, margin, row_heights) = match style {
+        // Title, header and data rows each use their own text style and height.
+        let (text_heights, fonts, margins) = match style {
             Some((_, table_style)) => {
-                let heights = [
-                    table_style.title_row_style.text_height.max(1.0e-6),
-                    table_style.header_row_style.text_height.max(1.0e-6),
-                    table_style.data_row_style.text_height.max(1.0e-6),
+                let rows = [
+                    &table_style.title_row_style,
+                    &table_style.header_row_style,
+                    &table_style.data_row_style,
                 ];
-                let row = |h: f64| h * 4.0 / 3.0 + 2.0 * table_style.vertical_margin;
                 (
-                    heights,
-                    table_style.horizontal_margin,
-                    [row(heights[0]), row(heights[1]), row(heights[2])],
+                    rows.map(|row| row.text_height.max(1.0e-6)),
+                    rows.map(|row| {
+                        crate::entities::text_support::resolve_text_style(
+                            &row.text_style_name,
+                            doc,
+                        )
+                        .font_name
+                    }),
+                    (table_style.horizontal_margin, table_style.vertical_margin),
                 )
             }
-            None => ([0.25, 0.25, 0.18], 0.06, [0.5, 0.5, 0.5]),
+            None => {
+                let font =
+                    crate::entities::text_support::resolve_text_style("Standard", doc).font_name;
+                ([0.25, 0.25, 0.18], [font.clone(), font.clone(), font], (0.06, 0.06))
+            }
         };
-        let font = crate::entities::text_support::resolve_text_style(
-            style.map_or("Standard", |(_, s)| s.data_row_style.text_style_name.as_str()),
-            doc,
-        )
-        .font_name;
+        // A text's extent: from the left of its ink or pen origin to the right
+        // of its ink or pen advance, and the height of its ink.
+        let extent = |text: &str, slot: usize| -> Option<(f64, f64)> {
+            let bounds = crate::entities::text_support::text_local_bounds(
+                &fonts[slot],
+                text,
+                text_heights[slot] as f32,
+                1.0,
+                0.0,
+            )?;
+            let width = bounds.advance.max(bounds.ink_max[0]) - bounds.ink_min[0].min(0.0);
+            let height = (bounds.ink_max[1] - bounds.ink_min[1]).max(0.0);
+            Some((f64::from(width), f64::from(height)))
+        };
+        let header = usize::from(state.property_headers);
+        let slot_of = |row_index: usize| if row_index < header { 1 } else { 2 };
+        // A row is as high as its tallest text ink, but at least a line and a
+        // third of its text height, plus both vertical margins (measured:
+        // Arial 4 -> 6.333 with 0.5 margins; Times 3 -> 5.034 / 5.032 by the
+        // row's own letters; empty title row -> a line and a third).
+        let row_height = |slot: usize, texts: &[String]| {
+            let ink = texts
+                .iter()
+                .filter_map(|text| extent(text, slot))
+                .map(|(_, height)| height)
+                .fold(0.0_f64, f64::max);
+            ink.max(text_heights[slot] * 4.0 / 3.0) + 2.0 * margins.1
+        };
         let mut table = TableBuilder::new(body.len() + 1, columns)
             .at(Vector3::new(0.0, 0.0, 0.0))
-            .row_height(row_heights[2])
+            .row_height(row_height(2, &[]))
             .column_width(2.0)
             .build();
         table.table_style_handle = style.map(|(handle, _)| handle);
-        table.set_cell_text(0, 0, state.table_title.trim());
+        let title = state.table_title.trim().to_string();
+        table.set_cell_text(0, 0, &title);
         if columns > 1 {
             table.merge_cells(CellRange::new(0, 0, 0, columns - 1));
         }
@@ -2731,30 +2777,34 @@ impl OpenCADStudio {
             }
         }
         // A column is as wide as its widest text (header included) and five
-        // horizontal cell margins (measured with three styles: text height
-        // 4.5/4/6 with margins 1.5/3/2 — the width minus the text grows by
-        // five margins and not by the text height).
-        let header = usize::from(state.property_headers);
+        // horizontal cell margins (measured with Arial, Times, txt and simplex
+        // at text heights 2.5 to 5 and margins 0.5 to 2.5: exact to 1e-4).
         for (column_index, column) in table.columns.iter_mut().enumerate() {
             let widest = body
                 .iter()
                 .enumerate()
                 .filter_map(|(row_index, row)| {
-                    let height = text_heights[if row_index < header { 1 } else { 2 }];
-                    row.get(column_index).map(|value| (value, height))
+                    row.get(column_index)
+                        .and_then(|value| extent(value, slot_of(row_index)))
                 })
-                .filter_map(|(value, height)| {
-                    crate::entities::text_support::text_local_bounds(
-                        &font,
-                        value,
-                        height as f32,
-                        1.0,
-                        0.0,
-                    )
-                })
-                .map(|bounds| f64::from(bounds.advance))
+                .map(|(width, _)| width)
                 .fold(0.0_f64, f64::max);
-            column.width = widest + 5.0 * margin;
+            column.width = widest + 5.0 * margins.0;
+        }
+        let title_texts: &[String] = if title.is_empty() {
+            &[]
+        } else {
+            std::slice::from_ref(&title)
+        };
+        let heights: Vec<f64> = std::iter::once(row_height(0, title_texts))
+        .chain(
+            body.iter()
+                .enumerate()
+                .map(|(row_index, row)| row_height(slot_of(row_index), row)),
+        )
+        .collect();
+        for (row, height) in table.rows.iter_mut().zip(&heights) {
+            row.height = *height;
         }
         if let Some((_, table_style)) = style {
             let names = [
@@ -2772,7 +2822,6 @@ impl OpenCADStudio {
                     table_style,
                     names[slot],
                 ));
-                row.height = row_heights[slot];
             }
         }
         table
