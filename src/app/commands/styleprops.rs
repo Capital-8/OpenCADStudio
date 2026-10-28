@@ -1304,6 +1304,7 @@ impl OpenCADStudio {
                     | "SELECTIONAREAOPACITY"
                     | "SELECTIONEFFECT"
                     | "SELECTIONEFFECTCOLOR"
+                    | "VSEDGECOLOR"
                     | "WINDOWSAREACOLOR"
                     | "WINDOWAREACOLOR"
                     | "CROSSINGAREACOLOR"
@@ -2854,6 +2855,34 @@ impl OpenCADStudio {
                                     )),
                                 }
                             }
+                            // An index, a colour name or R,G,B; BLACK (or 0)
+                            // goes back to the default black edges.
+                            "VSEDGECOLOR" => {
+                                let shown = |rgb: Option<[u8; 3]>| match rgb {
+                                    Some([r, g, b]) => format!("{r},{g},{b}"),
+                                    None => "BLACK".to_string(),
+                                };
+                                match &value {
+                                    Some(v) => match parse_edge_color(v) {
+                                        Some(rgb) => {
+                                            self.model_space.edge_color = rgb;
+                                            self.sync_model_space_theme(false);
+                                            Ok((format!("VSEDGECOLOR = {}", shown(rgb)), true))
+                                        }
+                                        None => Err(
+                                            "SETVAR: a colour index, name or R,G,B required."
+                                                .into(),
+                                        ),
+                                    },
+                                    None => Ok((
+                                        format!(
+                                            "VSEDGECOLOR = {}",
+                                            shown(self.model_space.edge_color)
+                                        ),
+                                        false,
+                                    )),
+                                }
+                            }
                             "WINDOWSAREACOLOR" | "WINDOWAREACOLOR" => {
                                 match &value {
                                     Some(v) => match v.parse::<u8>() {
@@ -3682,6 +3711,7 @@ impl OpenCADStudio {
                                         | "SELECTIONAREAOPACITY"
                                         | "SELECTIONEFFECT"
                                         | "SELECTIONEFFECTCOLOR"
+                                        | "VSEDGECOLOR"
                                         | "WINDOWSAREACOLOR"
                                         | "WINDOWAREACOLOR"
                                         | "CROSSINGAREACOLOR"
@@ -4453,6 +4483,22 @@ impl OpenCADStudio {
         }
         ok
     }
+}
+
+/// A VSEDGECOLOR value: an index, a colour name or R,G,B, with BLACK (or 0)
+/// for the default black edges (`Some(None)`).
+fn parse_edge_color(value: &str) -> Option<Option<[u8; 3]>> {
+    let value = value.trim().trim_start_matches("RGB:");
+    if value.eq_ignore_ascii_case("BLACK") || value == "0" {
+        return Some(None);
+    }
+    let parts: Vec<Option<u8>> = value.split(',').map(|p| p.trim().parse().ok()).collect();
+    if let [Some(r), Some(g), Some(b)] = parts[..] {
+        return Some(Some([r, g, b]));
+    }
+    crate::ui::window::attman_dialog::parse_color(value)
+        .and_then(crate::ui::color_select::math::color_rgb)
+        .map(|(r, g, b)| Some([r, g, b]))
 }
 
 /// RENAME for the remaining name-keyed symbol tables.

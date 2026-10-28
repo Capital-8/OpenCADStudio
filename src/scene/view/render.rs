@@ -4988,6 +4988,7 @@ impl Scene {
         uniforms.flat_shade = if flags.flat_shade { 1.0 } else { 0.0 };
         uniforms.transparency_enable = if self.transparency_display { 1.0 } else { 0.0 };
         uniforms.highlight_widen = self.selection_widen;
+        uniforms.edge_rgb = crate::scene::pipeline::uniforms::edge_rgb_bits(self.edge_color);
         uniforms.viewport_background = display.background.base;
         uniforms.view_tone = [display.brightness, display.contrast, 0.0, 0.0];
         uniforms.background_top = display.background.colors[0];

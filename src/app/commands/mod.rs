@@ -1134,6 +1134,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "SELECTIONAREAOPACITY",
         "SELECTIONEFFECT",
         "SELECTIONEFFECTCOLOR",
+        "VSEDGECOLOR",
         "WINDOWSAREACOLOR",
         "WINDOWAREACOLOR",
         "CROSSINGAREACOLOR",

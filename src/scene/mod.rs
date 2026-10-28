@@ -2547,6 +2547,8 @@ pub struct Scene {
     pub selection_effect: bool,
     /// Extra screen pixels the selection highlight is drawn wider.
     pub selection_widen: f32,
+    /// VSEDGECOLOR: edge colour of the shaded-with-edges modes (`None`: black).
+    pub edge_color: Option<[u8; 3]>,
     /// Whether entity transparency is honoured on screen. When false the
     /// wire shader forces every line opaque (a uniform toggle, no retessellate).
     pub transparency_display: bool,
@@ -3222,6 +3224,7 @@ impl Scene {
             constraint_hover_wires: Vec::new(),
             selection_color: crate::scene::model::wire_model::WireModel::SELECTED,
             selection_widen: 0.0,
+            edge_color: None,
             selection_effect: true,
             transparency_display: true,
             model_lineweight_scale: 1.0,

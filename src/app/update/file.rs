@@ -1630,6 +1630,7 @@ impl OpenCADStudio {
             tab.scene.selection_color = sel_color;
             tab.scene.selection_effect = sel_effect;
             let old_sel_widen = std::mem::replace(&mut tab.scene.selection_widen, sel_widen);
+            tab.scene.edge_color = self.model_space.edge_color;
             tab.bg_color = Some(model_bg);
             tab.paper_bg_color = Some(paper_bg);
 
