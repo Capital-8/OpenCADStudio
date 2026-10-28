@@ -355,6 +355,10 @@ impl OpenCADStudio {
             "SELECTALL" => Message::SelectAllShortcut,
             "PASTECLIP" => Message::PasteShortcut,
 
+            // The multiline text editor keeps its own history.
+            "UNDO" if self.mtext_editor.is_some() => Message::MTextUndo,
+            "REDO" if self.mtext_editor.is_some() => Message::MTextRedo,
+
             "UNDO" => {
                 let i = self.active_tab;
 
