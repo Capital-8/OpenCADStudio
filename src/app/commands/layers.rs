@@ -854,10 +854,18 @@ impl OpenCADStudio {
 
             "MATCHPROP" => {
                 use crate::modules::draw::properties::match_prop::MatchPropCommand;
+                // One preselected object is the source. Multiple objects are
+                // ambiguous, so keep the explicit source-pick prompt for them.
+                let src = match self.tabs[i].scene.selected_entities().as_slice() {
+                    [(handle, _)] => *handle,
+                    _ => codec::Handle::NULL,
+                };
+                // Consume the preselection so it cannot become a destination.
                 self.tabs[i].scene.deselect_all();
-                let cmd = MatchPropCommand::new();
+                let cmd = MatchPropCommand::new(src);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
+                self.refresh_active_cmd_preview(i);
             }
 
             "GROUP" => {

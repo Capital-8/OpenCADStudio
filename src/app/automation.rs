@@ -3748,6 +3748,166 @@ mod tests {
     }
 
     #[test]
+    fn matchprop_uses_single_preselected_source_for_successive_destinations() {
+        use crate::command::StepInput;
+        use codec::{entities::Line, types::Vector3, EntityType};
+
+        for command in ["MA", "MATCHPROP"] {
+            let mut app = OpenCADStudio::new_for_test();
+            app.automation_op(r#"{"op":"new"}"#);
+            let i = app.active_tab;
+            let handles: Vec<_> = (0..3)
+                .map(|n| {
+                    let mut line = Line::new();
+                    line.start = Vector3::new(n as f64 * 30.0, 0.0, 0.0);
+                    line.end = Vector3::new(n as f64 * 30.0 + 20.0, 10.0, 0.0);
+                    line.common.linetype_scale = if n == 0 { 2.5 } else { 1.0 };
+                    app.tabs[i].scene.add_entity(EntityType::Line(line))
+                })
+                .collect();
+            let source = handles[0];
+            app.tabs[i].scene.select_entity(source, true);
+
+            let _ = app.run_command_line(command);
+            let cmd = app.tabs[i]
+                .active_cmd
+                .as_ref()
+                .expect("MATCHPROP must start");
+            assert!(
+                !cmd.needs_entity_pick(),
+                "preselection must supply the source"
+            );
+            assert!(cmd.is_selection_gathering(), "must ask for destinations");
+            assert!(app.tabs[i].scene.selected.is_empty());
+            assert!(
+                !app.tabs[i].scene.preview_wires.is_empty(),
+                "source must glow"
+            );
+            assert_eq!(
+                app.tabs[i]
+                    .scene
+                    .document
+                    .get_entity(handles[1])
+                    .unwrap()
+                    .common()
+                    .linetype_scale,
+                1.0,
+                "starting the command must not modify destinations"
+            );
+
+            for &destination in &handles[1..] {
+                let _ = app.feed_command(StepInput::SelectionComplete(vec![destination]));
+                assert_eq!(
+                    app.tabs[i]
+                        .scene
+                        .document
+                        .get_entity(destination)
+                        .unwrap()
+                        .common()
+                        .linetype_scale,
+                    2.5,
+                    "destination must take the preselected source's properties"
+                );
+                assert!(
+                    app.tabs[i].active_cmd.is_some(),
+                    "must accept more destinations"
+                );
+            }
+            let _ = app.feed_command(StepInput::Enter);
+            assert!(app.tabs[i].active_cmd.is_none(), "Enter must end MATCHPROP");
+
+            app.automation_op(r#"{"op":"undo"}"#);
+            assert_eq!(
+                app.tabs[i]
+                    .scene
+                    .document
+                    .get_entity(handles[2])
+                    .unwrap()
+                    .common()
+                    .linetype_scale,
+                1.0,
+                "undo must restore the last destination"
+            );
+            app.automation_op(r#"{"op":"redo"}"#);
+            assert_eq!(
+                app.tabs[i]
+                    .scene
+                    .document
+                    .get_entity(handles[2])
+                    .unwrap()
+                    .common()
+                    .linetype_scale,
+                2.5
+            );
+            assert_eq!(
+                app.tabs[i]
+                    .scene
+                    .document
+                    .get_entity(source)
+                    .unwrap()
+                    .common()
+                    .linetype_scale,
+                2.5,
+                "the source must remain unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn matchprop_requests_source_without_a_single_preselected_object() {
+        use crate::command::StepInput;
+        use codec::{entities::Line, EntityType};
+
+        for preselect in [false, true] {
+            let mut app = OpenCADStudio::new_for_test();
+            app.automation_op(r#"{"op":"new"}"#);
+            let i = app.active_tab;
+            let handles: Vec<_> = [2.5, 4.0, 1.0]
+                .into_iter()
+                .map(|scale| {
+                    let mut line = Line::new();
+                    line.common.linetype_scale = scale;
+                    app.tabs[i].scene.add_entity(EntityType::Line(line))
+                })
+                .collect();
+            if preselect {
+                app.tabs[i].scene.select_entities(&handles[..2]);
+            }
+
+            let _ = app.run_command_line("MA");
+            let cmd = app.tabs[i]
+                .active_cmd
+                .as_ref()
+                .expect("MATCHPROP must start");
+            assert!(
+                cmd.needs_entity_pick(),
+                "must ask for an unambiguous source"
+            );
+            assert!(!cmd.is_selection_gathering());
+            assert!(app.tabs[i].scene.selected.is_empty());
+
+            let _ = app.feed_command(StepInput::EntityPick(handles[1], glam::DVec3::ZERO));
+            let _ = app.feed_command(StepInput::SelectionComplete(vec![handles[2]]));
+            assert_eq!(
+                app.tabs[i]
+                    .scene
+                    .document
+                    .get_entity(handles[2])
+                    .unwrap()
+                    .common()
+                    .linetype_scale,
+                4.0,
+                "the explicitly picked source must supply the properties"
+            );
+            let _ = app.feed_command(StepInput::Escape);
+            assert!(
+                app.tabs[i].active_cmd.is_none(),
+                "Escape must end MATCHPROP"
+            );
+        }
+    }
+
+    #[test]
     fn matchprop_matches_text_style_and_height() {
         // MATCHPROP between text objects must carry the text-specific
         // properties (style, height) to TEXT and MTEXT destinations, not just
