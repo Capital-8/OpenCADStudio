@@ -413,11 +413,14 @@ pub(crate) fn capital_units(face: &ttf_parser::Face) -> f32 {
         .unwrap_or(0.7 * face.units_per_em() as f32)
 }
 
-/// Shaping without pair kerning: the reference sets TrueType TEXT and
-/// MTEXT from each glyph's advance alone.
+/// Shaping without pair kerning or optional ligatures: the reference sets
+/// TrueType TEXT and MTEXT from each character's own glyph and advance
+/// (`fi` stays an f and an i).
 fn unkerned() -> cosmic_text::FontFeatures {
     let mut features = cosmic_text::FontFeatures::new();
     features.disable(cosmic_text::FeatureTag::KERNING);
+    features.disable(cosmic_text::FeatureTag::STANDARD_LIGATURES);
+    features.disable(cosmic_text::FeatureTag::CONTEXTUAL_LIGATURES);
     features
 }
 
