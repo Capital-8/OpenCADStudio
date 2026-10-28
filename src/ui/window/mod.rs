@@ -26,6 +26,7 @@ pub mod find_replace;
 pub mod geometric_tolerance;
 pub mod hyperlink_dialog;
 pub mod spell_dialog;
+pub mod extraction_outdated;
 pub mod import_dialogs;
 pub mod gradient_editor;
 pub mod graphic_attributes;

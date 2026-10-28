@@ -17,6 +17,7 @@ mod dim;
 mod dim_cmd;
 mod dim_inspect;
 mod dim_layer;
+pub(crate) mod extraction_eval;
 mod mleader_layer;
 pub(crate) mod display;
 mod draw;
@@ -555,6 +556,9 @@ impl OpenCADStudio {
         if let Some(t) = self.dispatch_text_layer(cmd, i) {
             return Some(t);
         }
+        if let Some(t) = self.dispatch_dxeval(cmd, i) {
+            return Some(t);
+        }
         if let Some(t) = self.dispatch_dim_layer(cmd, i) {
             return Some(t);
         }
@@ -1071,6 +1075,7 @@ inventory::submit!(crate::command::CommandRegistration {
         "TXT2MTXTWORDWRAP",
         "TXT2MTXTLINESPACING",
         "FIELDEVAL",
+        "DXEVAL",
         "PDFIMPORTMODE",
         "PDFIMPORTFILTER",
         "PDFIMPORTLAYERS",

@@ -964,6 +964,15 @@ impl OpenCADStudio {
             // PLOT / PRINT open the full plot dialog (printer, paper, scale,
             // options); EXPORT / EXPORTPDF stay a direct PDF export.
             "PLOT" | "PRINT" => {
+                // DXEVAL: the plot command compares extraction tables
+                // before its dialog opens; -PLOT does not.
+                if let Some(task) = self.evaluate_extraction_tables(
+                    i,
+                    super::extraction_eval::EVENT_PLOT,
+                    Some(Message::Command(cmd.to_string())),
+                ) {
+                    return Some(task);
+                }
                 return Some(Task::done(Message::PlotDialogOpen));
             }
             // PUBLISH: the layouts of the drawing, each with its own page
@@ -1970,28 +1979,22 @@ impl OpenCADStudio {
                     let document = &self.tabs[i].scene.document;
                     // An extraction table is refreshed by running its saved
                     // extraction again, under its title row.
-                    let settings = crate::app::annotation_data::extraction_link_settings(
-                        document,
-                        *link_handle,
-                    );
-                    let first_linked_row = usize::from(settings.is_some());
-                    let read = match settings {
-                        Some(settings) => crate::app::annotation_data::rerun_extraction(
+                    let (read, first_linked_row) =
+                        match crate::app::annotation_data::extraction_table_rows(
                             document,
                             self.tabs[i].current_path.as_deref(),
-                            &settings,
-                        )
-                        .map(|rows| {
-                            let title = match document.get_entity(*table_handle) {
-                                Some(codec::EntityType::Table(table)) => {
-                                    table.cell_text(0, 0).unwrap_or_default().to_string()
-                                }
-                                _ => String::new(),
-                            };
-                            std::iter::once(vec![title]).chain(rows).collect()
-                        }),
-                        None => crate::app::annotation_data::read_data_link(document, *link_handle),
-                    };
+                            *table_handle,
+                            *link_handle,
+                        ) {
+                            Some(rows) => (rows, 1),
+                            None => (
+                                crate::app::annotation_data::read_data_link(
+                                    document,
+                                    *link_handle,
+                                ),
+                                0,
+                            ),
+                        };
                     match read {
                         Ok(rows) if !rows.is_empty() => {
                             updates.push((*table_handle, *link_handle, rows, first_linked_row))
@@ -1999,24 +2002,7 @@ impl OpenCADStudio {
                         _ => failed += 1,
                     }
                 }
-                if !updates.is_empty() {
-                    self.push_undo_snapshot(i, "DATALINKUPDATE");
-                }
-                let mut changed_handles = Vec::new();
-                for (table_handle, link_handle, rows, first_linked_row) in updates {
-                    let Some(codec::EntityType::Table(table)) =
-                        self.tabs[i].scene.document.get_entity_mut(table_handle)
-                    else {
-                        continue;
-                    };
-                    apply_link_rows(table, link_handle, &rows, first_linked_row);
-                    changed_handles.push(table_handle);
-                }
-                if !changed_handles.is_empty() {
-                    self.invalidate_property_targets(i, &changed_handles);
-                    self.tabs[i].dirty = true;
-                    self.refresh_properties();
-                }
+                let updated = self.apply_link_updates(i, updates);
                 if failed > 0 {
                     self.command_line.push_output(
                         crate::tf!("{} object(s) could not be updated.", failed).as_ref(),
@@ -2025,7 +2011,7 @@ impl OpenCADStudio {
                 self.command_line.push_output(
                     crate::tf!(
                         "{} object(s) updated successfully.",
-                        changed_handles.len()
+                        updated
                     )
                     .as_ref(),
                 );
@@ -2231,7 +2217,14 @@ pub(crate) fn apply_link_rows(
 ) {
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     while table.row_count() < rows.len() {
-        table.add_row();
+        // A new row repeats the row above it (height, cell formats); its
+        // texts are written below.
+        match table.rows.last().cloned() {
+            Some(row) => table.rows.push(row),
+            None => {
+                table.add_row();
+            }
+        }
     }
     while table.row_count() > rows.len() {
         table.remove_row(table.row_count() - 1);

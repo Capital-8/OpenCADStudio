@@ -1841,6 +1841,12 @@ pub(super) struct OpenCADStudio {
     /// Locked-file failure currently shown in the recovery dialog.
     #[cfg(not(target_arch = "wasm32"))]
     pending_save_failure: Option<PendingSaveFailure>,
+    /// Extraction tables an event (DXEVAL) found outdated, still to answer,
+    /// and the message that carries the event on afterwards.
+    pub(crate) extraction_outdated: Option<ExtractionPrompt>,
+    /// The next DXEVAL event goes ahead unchecked: the one the window above
+    /// just answered for.
+    pub(crate) extraction_checked: bool,
     /// Save stopped because the drawing changed outside this editor.
     #[cfg(not(target_arch = "wasm32"))]
     pending_external_change: Option<PendingExternalChange>,
@@ -2031,6 +2037,15 @@ pub(super) struct PendingWebThumbnailSave {
     ext: String,
     version: codec::DxfVersion,
     bounds: iced::Rectangle,
+}
+
+/// Extraction tables found outdated by a DXEVAL event.
+#[derive(Debug, Clone)]
+pub(crate) struct ExtractionPrompt {
+    pub tables: Vec<crate::app::annotation_data::OutdatedExtraction>,
+    /// How many there were, for the window's counter.
+    pub count: usize,
+    pub resume: Option<Message>,
 }
 
 #[derive(Debug, Clone)]
@@ -2849,6 +2864,8 @@ pub enum ModalKind {
     TdsMaterial,
     /// A texture map a 3D Studio import did not find, one window per map.
     TdsMissingMap,
+    /// An extraction table outdated at open/save/plot/publish.
+    ExtractionOutdated,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.
@@ -4841,6 +4858,8 @@ pub enum Message {
     PlotDialogOpen,
     /// An edit inside the Plot / Print dialog.
     PlotDlg(crate::ui::window::plot::PlotDlgMsg),
+    /// The answer to the outdated extraction table window.
+    ExtractionOutdated(crate::ui::window::extraction_outdated::OutdatedChoice),
     /// An edit inside the docked Insert Block panel.
     BlockPalette(crate::ui::window::block_palette::BlockPaletteMsg),
     /// A dock chrome interaction (grab/resize/pin/hover/dock move) on a side
@@ -5768,6 +5787,8 @@ impl OpenCADStudio {
             pending_save_leases: std::collections::HashMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
             pending_save_failure: None,
+            extraction_outdated: None,
+            extraction_checked: false,
             #[cfg(not(target_arch = "wasm32"))]
             pending_external_change: None,
             save_dialog_format: crate::io::DEFAULT_SAVE_FORMAT.to_string(),

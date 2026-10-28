@@ -1728,6 +1728,15 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 let task = self.on_file_opened(name, path, doc, caches);
+                // DXEVAL: an open compares the drawing's extraction tables.
+                let task = match self.evaluate_extraction_tables(
+                    self.active_tab,
+                    crate::app::commands::extraction_eval::EVENT_OPEN,
+                    None,
+                ) {
+                    Some(prompt) => Task::batch([task, prompt]),
+                    None => task,
+                };
                 // Web: raster files dropped while this open was in flight
                 // registered after its caches were built — re-resolve any
                 // image the (possibly new) drawing references by name.
@@ -2577,6 +2586,7 @@ impl OpenCADStudio {
             }
 
             Message::SaveFile => self.on_save_file(),
+            Message::ExtractionOutdated(choice) => self.on_extraction_outdated(choice),
 
             Message::SaveAs => {
                 if self.read_only {
@@ -10741,6 +10751,15 @@ impl OpenCADStudio {
                 Task::none()
             }
 
+            // ✕ on the outdated extraction table window leaves every table
+            // as it is; the event goes on.
+            Message::CloseModal
+                if self.active_modal == Some(super::ModalKind::ExtractionOutdated) =>
+            {
+                self.on_extraction_outdated(
+                    crate::ui::window::extraction_outdated::OutdatedChoice::SkipAll,
+                )
+            }
             Message::CloseModal => {
                 if self.active_modal == Some(super::ModalKind::BlockLookup) {
                     self.block_lookup = None;
@@ -12061,6 +12080,14 @@ impl OpenCADStudio {
             Message::PrintAllOptions => self.on_print_all_options(),
             Message::PrintAllPdf => {
                 let i = self.active_tab;
+                // DXEVAL: publishing compares extraction tables as it starts.
+                if let Some(task) = self.evaluate_extraction_tables(
+                    i,
+                    crate::app::commands::extraction_eval::EVENT_PUBLISH,
+                    Some(Message::PrintAllPdf),
+                ) {
+                    return task;
+                }
                 let stem = self.tabs[i]
                     .current_path
                     .as_deref()
@@ -12094,7 +12121,17 @@ impl OpenCADStudio {
             }
             Message::PrintAllPdfPath(None) => Task::none(),
             Message::PrintAllPdfPath(Some(path)) => self.on_print_all_pdf_path_some(path),
-            Message::PrintAllPrint => self.on_print_all_print(),
+            Message::PrintAllPrint => {
+                // DXEVAL: publishing compares extraction tables as it starts.
+                match self.evaluate_extraction_tables(
+                    self.active_tab,
+                    crate::app::commands::extraction_eval::EVENT_PUBLISH,
+                    Some(Message::PrintAllPrint),
+                ) {
+                    Some(task) => task,
+                    None => self.on_print_all_print(),
+                }
+            }
             Message::PrintAllFinished(result) => {
                 match result {
                     Ok(message) => self.command_line.push_info(&message),

@@ -64,6 +64,7 @@ impl OpenCADStudio {
             Some(K::TdsImport) => crate::tr!("import-3ds", "title"),
             Some(K::TdsMaterial) => crate::tr!("import-3ds-alert", "title"),
             Some(K::TdsMissingMap) => crate::tr!("import-3ds", "title"),
+            Some(K::ExtractionOutdated) => crate::tr!("extraction-outdated", "title"),
             Some(K::XrefAttach) => crate::t!("Attach External Reference").into_owned(),
             Some(K::WriteBlock) => crate::t!("Write Block").into_owned(),
             Some(K::GeometricTolerance) => crate::t!("Geometric Tolerance").into_owned(),
@@ -548,6 +549,19 @@ impl OpenCADStudio {
                 let state = self.import_dialogs.tds_material.as_ref()?;
                 sized_flow(ex, 460, 420, |flow| {
                     crate::ui::window::import_dialogs::view_tds_material(state, flow)
+                })
+            }
+            super::super::ModalKind::ExtractionOutdated => {
+                let prompt = self.extraction_outdated.as_ref()?;
+                let first = prompt.tables.first()?;
+                let position = prompt.count - prompt.tables.len() + 1;
+                sized_flow(ex, 480, 250, |flow| {
+                    crate::ui::window::extraction_outdated::view(
+                        &first.settings,
+                        position,
+                        prompt.count,
+                        flow,
+                    )
                 })
             }
             super::super::ModalKind::TdsMissingMap => {

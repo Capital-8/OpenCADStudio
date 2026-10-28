@@ -829,6 +829,13 @@ impl OpenCADStudio {
                         // The opened document settled (API v9): the post-op
                         // boundary announces `DocumentOpened` once for this load.
                         self.tabs[i].note_document_loaded();
+                        // DXEVAL: an open through automation compares the
+                        // extraction tables as an open from the GUI does.
+                        let _ = self.evaluate_extraction_tables(
+                            i,
+                            crate::app::commands::extraction_eval::EVENT_OPEN,
+                            None,
+                        );
                         self.entity_summary()
                     }
                     Err(e) => err(format!("open: {e}")),

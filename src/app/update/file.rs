@@ -4070,6 +4070,15 @@ impl OpenCADStudio {
             return Task::none();
         }
         let i = self.active_tab;
+        // DXEVAL: a save may first offer (or make) outdated extraction
+        // table updates.
+        if let Some(task) = self.evaluate_extraction_tables(
+            i,
+            crate::app::commands::extraction_eval::EVENT_SAVE,
+            Some(Message::SaveFile),
+        ) {
+            return task;
+        }
         // Web serializes immediately below. Native preparation happens
         // once after the destination/version is known.
         #[cfg(target_arch = "wasm32")]

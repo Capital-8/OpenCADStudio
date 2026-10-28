@@ -120,6 +120,7 @@ pub(super) const NAMES: &[&str] = &[
     "tds_import_dialog",
     "tds_material_dialog",
     "tds_map_dialog",
+    "extraction_outdated",
     "data_link_manager",
     "data_extraction",
     "refedit_dialog",
@@ -2755,6 +2756,26 @@ impl OpenCADStudio {
             }
             // The missing texture map window of a 3D Studio import: "ok"
             // (or "close") dismisses the shown map; the next one follows.
+            // The outdated extraction table window: "update", "update_all",
+            // "skip", "skip_all" or "close".
+            "extraction_outdated" => {
+                use crate::ui::window::extraction_outdated::OutdatedChoice as C;
+                if self.active_modal != Some(crate::app::ModalKind::ExtractionOutdated) {
+                    return Err(failure(
+                        "no_dialog",
+                        "The outdated extraction table window is not open",
+                    ));
+                }
+                let spec = string(req, "value")?;
+                match spec {
+                    "update" => Message::ExtractionOutdated(C::Update),
+                    "update_all" => Message::ExtractionOutdated(C::UpdateAll),
+                    "skip" => Message::ExtractionOutdated(C::Skip),
+                    "skip_all" => Message::ExtractionOutdated(C::SkipAll),
+                    "close" => Message::CloseModal,
+                    _ => return Err(failure("invalid_value", spec)),
+                }
+            }
             "tds_map_dialog" => {
                 if self.active_modal != Some(crate::app::ModalKind::TdsMissingMap) {
                     return Err(failure("no_dialog", "The missing texture map window is not open"));
