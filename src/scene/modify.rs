@@ -691,6 +691,12 @@ impl Scene {
     /// no fix-up here. Shared with the clipboard paste path. (#129)
     pub(crate) fn reset_clone_subhandles(doc: &mut codec::Document, entity: &mut EntityType) {
         match entity {
+            EntityType::Table(table) => {
+                // A table exclusively owns its anonymous picture block. The
+                // codec also resolves by name, so detach both references.
+                table.block_record_handle = None;
+                table.block_name.clear();
+            }
             EntityType::Insert(ins) => {
                 for att in ins.attributes.iter_mut() {
                     att.common.handle = doc.allocate_handle();
@@ -4316,5 +4322,128 @@ mod copy_field_tests {
             other => panic!("expected a dictionary, got {other:?}"),
         }
         assert_own_field_tree(&scene.document, copy_root, text, child);
+    }
+}
+
+#[cfg(test)]
+mod table_picture_ownership_tests {
+    use crate::command::{CadCommand, CmdResult, EntityTransform};
+    use crate::modules::annotate::table_cmd::TableCellEditCommand;
+    use crate::scene::Scene;
+    use codec::entities::Table;
+    use codec::types::Vector3;
+    use codec::{EntityType, Handle};
+    use glam::DVec3;
+
+    fn table(scene: &Scene, handle: Handle) -> &Table {
+        match scene.document.get_entity(handle) {
+            Some(EntityType::Table(table)) => table,
+            other => panic!("expected TABLE, got {other:?}"),
+        }
+    }
+
+    fn source_table(scene: &mut Scene) -> Handle {
+        let mut source = Table::new(Vector3::ZERO, 3, 2);
+        source.set_cell_text(0, 0, "Title");
+        source.set_cell_text(1, 0, "Header");
+        source.set_cell_text(2, 0, "A");
+        let handle = scene.add_entity(EntityType::Table(Box::new(source)));
+        assert!(table(scene, handle).block_record_handle.is_some());
+        assert!(table(scene, handle).block_name.starts_with("*T"));
+        handle
+    }
+
+    fn picture(scene: &Scene, handle: Handle) -> (Handle, String, Vec<String>) {
+        let table = table(scene, handle);
+        let record = table
+            .block_record_handle
+            .and_then(|h| scene.document.block_records.iter().find(|r| r.handle == h))
+            .or_else(|| scene.document.block_records.get(&table.block_name))
+            .expect("table resolves to a picture block");
+        let texts = record
+            .entity_handles
+            .iter()
+            .filter_map(|h| match scene.document.get_entity(*h) {
+                Some(EntityType::MText(text)) => Some(text.value.clone()),
+                _ => None,
+            })
+            .collect();
+        (record.handle, record.name.clone(), texts)
+    }
+
+    fn edit_copy(scene: &mut Scene, handle: Handle) {
+        let mut command = TableCellEditCommand::new(handle, table(scene, handle), 2, 0);
+        let result = command.on_text_input("B").expect("cell edit commits");
+        let CmdResult::ReplaceMany(mut replacements, _) = result else {
+            panic!("expected TABLEDIT replacement");
+        };
+        let (target, mut entities) = replacements.remove(0);
+        assert_eq!(target, handle);
+        // update_entity commits the replacement and runs bump_entities, the
+        // same refresh_table_block rebuild used by the cell-edit path.
+        assert!(scene.update_entity(entities.remove(0)));
+    }
+
+    #[test]
+    fn copied_table_edit_keeps_source_picture_text() {
+        let mut scene = Scene::new();
+        let source = source_table(&mut scene);
+        let before = picture(&scene, source);
+        scene.begin_undo_recording();
+        let copies = scene.copy_entities(
+            &[source],
+            &EntityTransform::Translate(DVec3::new(30.0, 0.0, 0.0)),
+        );
+        assert_eq!(copies.len(), 1);
+        let copy = copies[0];
+        edit_copy(&mut scene, copy);
+        let original_picture = picture(&scene, source);
+        let copied_picture = picture(&scene, copy);
+        assert_ne!(
+            original_picture.0, copied_picture.0,
+            "TABLE picture handles are shared"
+        );
+        assert_ne!(
+            original_picture.1, copied_picture.1,
+            "TABLE picture names are shared"
+        );
+        assert_eq!(
+            original_picture, before,
+            "source picture was modified by the copy's edit"
+        );
+        assert!(original_picture.2.iter().any(|text| text == "A"));
+        assert!(copied_picture.2.iter().any(|text| text == "B"));
+        assert_eq!(table(&scene, source).cell_text(2, 0), Some("A"));
+        assert_eq!(table(&scene, copy).cell_text(2, 0), Some("B"));
+        assert!(scene.take_undo_recording().unwrap().is_poisoned());
+    }
+
+    #[test]
+    fn editing_a_legacy_shared_picture_detaches_its_name() {
+        let mut scene = Scene::new();
+        let source = source_table(&mut scene);
+        let before = picture(&scene, source);
+        // Simulate a drawing already containing shared references, bypassing
+        // the clone helper to exercise the independent edit-time protection.
+        let mut copy = scene.document.get_entity(source).unwrap().clone();
+        copy.common_mut().handle = Handle::NULL;
+        let copy = scene.document.add_entity(copy).unwrap();
+        edit_copy(&mut scene, copy);
+        assert_ne!(picture(&scene, copy).0, before.0);
+        assert_eq!(picture(&scene, source), before);
+    }
+
+    #[test]
+    fn clone_helper_drops_both_table_picture_references() {
+        let mut scene = Scene::new();
+        let source = source_table(&mut scene);
+        let mut copy = scene.document.get_entity(source).unwrap().clone();
+        Scene::reset_clone_subhandles(&mut scene.document, &mut copy);
+        let EntityType::Table(copy) = copy else {
+            unreachable!()
+        };
+        assert!(copy.block_record_handle.is_none());
+        assert!(copy.block_name.is_empty());
+        assert!(table(&scene, source).block_record_handle.is_some());
     }
 }

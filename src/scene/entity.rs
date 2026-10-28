@@ -1086,6 +1086,9 @@ impl Scene {
         for (old_handle, mut entity) in source_entities {
             view::dispatch::apply_transform(&mut entity, &local);
             entity = crate::modules::draw::modify::explode::normalize_entity_for_block(entity);
+            if matches!(&entity, EntityType::Table(_)) {
+                Self::reset_clone_subhandles(&mut self.document, &mut entity);
+            }
             entity.common_mut().handle = Handle::NULL;
             entity.common_mut().owner_handle = br_handle;
             self.ensure_image_definition(&mut entity);
