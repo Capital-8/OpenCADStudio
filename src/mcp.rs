@@ -36,7 +36,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// Sixteen generated intent tools now follow the four facades. `node_graph`
 /// joined the execute ops; the action list gained `extraction_outdated`.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "8f034fba6d56ba2127d87319b96dfed65214735f5d9131661897cbc3cf9692a6";
+const TOOL_SCHEMA_DIGEST: &str = "bcd8c8774586fe5db3b51b28bb3b7ba8d376886c4a4e91188e59551d63bf061d";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
