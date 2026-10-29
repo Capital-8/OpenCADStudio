@@ -1974,6 +1974,88 @@ pub struct ParametricSample {
     pub direction: [f64; 2],
 }
 
+/// **Generic curve-definition types (the v2 generalization; the reshape
+/// target of the in-place v14 envelope).**
+///
+/// The host knows NO species: a curve is a driving-quantity ramp declared as
+/// DATA over the unit station parameter, evaluated by the host's generic
+/// integrator, audited at the record-model tolerances, and staged with
+/// generic carriers (exact Hermite for the polynomial class, measured-
+/// deviation chords otherwise). Species semantics (which quantity drives,
+/// which ramps restate which law, what a segment's ends must be) are the
+/// declaring plugin's own checks — the host refuses only what it can state
+/// generically. These types stage ADDITIVELY first (everything that needs
+/// them compiles beside the named-species surface) and become the v14
+/// envelope's shapes when the switch wave lands (see
+/// `target/redesign_v2_unfrozen_plan.md`; no deployed plugins pre-date the
+/// reshaping, and api_version stays 14).
+///
+/// A curve ramp: the driving quantity's values over one unit parameter
+/// (not `Copy`: the sampled arm carries a table; clone freely — staging
+/// copies payloads once, the per-move tier borrows).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Ramp {
+    /// An at-most-cubic polynomial ramp, coefficients ascending
+    /// (`value(xi) = Σ coeffs[i]·xi^i`); the exact class: the ramp AND its
+    /// integral are closed forms, and exact carriers derive generically.
+    Polynomial {
+        /// Coefficients in use (0..=3; higher entries ignored).
+        degree: u8,
+        /// Ascending coefficients, `coeffs[i]·xi^i`.
+        coeffs: [f64; 4],
+    },
+    /// A piecewise-linear ramp: `count` active knots ascending in xi over
+    /// [0, 1]; the integral accumulates per-interval quadratics. The same
+    /// 6-slot layout the declared vocabulary shipped.
+    Piecewise {
+        /// Active knots (0 < count <= 6; the rest are padding).
+        count: u32,
+        /// The (xi, value) knots, ascending in xi.
+        knots: [(f64, f64); 6],
+    },
+    /// A uniformly sampled table: `n` values at xi = i/(n-1); looked up
+    /// O(log n) with a linear tail; the host precomputes the stage-time
+    /// cumulative integrals so drag-time re-integration is O(log n) +
+    /// a small exacting tail (the performance-critical drag tier).
+    Sampled {
+        /// Table length (1..=4096).
+        n: u32,
+        /// The values, uniform in xi.
+        values: Vec<f64>,
+    },
+}
+
+/// One generically-defined segment: continuity state exactly as the
+/// segment struct carries it, plus the ramp payload in place of the
+/// species vocabulary.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CurveSegmentDef {
+    /// The record-model length (plan = arc length; profile = horizontal run).
+    pub length: f64,
+    /// The driving-quantity ramp over the unit parameter.
+    pub ramp: Ramp,
+    /// The secondary-quantity ramp as unnamed data (the cross-slope term a
+    /// plugin's cant layout carries; the host integrates it for the
+    /// record's secondary rows but slides NOTHING about the plane curve).
+    pub cross_slope: Option<Ramp>,
+}
+
+/// What a plugin grip re-anchors, in record-model terms only (the generic
+/// replacement for per-species drive semantics).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnchorLaw {
+    /// Drag the end point in the sheet (the plan piers).
+    EndStationToXY,
+    /// Re-anchor the end elevation.
+    EndElevation,
+    /// Re-anchor the end slope (grade).
+    EndGrade,
+    /// Scale the ramp's end value of the driving quantity.
+    EndCurvatureScale,
+    /// Re-run the segment's length.
+    Length,
+}
+
 /// **Plugin class-object staging types (API v14, additive).**
 ///
 /// The generalization of the parametric staging contract: a plugin-declared

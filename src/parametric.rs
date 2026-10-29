@@ -589,6 +589,116 @@ fn active_knots(count: u32, knots: &[(f64, f64); 6]) -> Option<&[(f64, f64)]> {
 
 /// The plan tangent angle at arc position s, relative to the segment's
 /// local frame (+x along the declared start direction).
+// ==== the v2 generic ramp machinery (additive now; the unfrozen switch wave
+// ==== deletes the named-species arms above and rewires everything onto this) ====
+//
+// The host's generic curve contract: the driving quantity arrives as DATA
+// (`Ramp`) over the unit station parameter; the host evaluates it, integrates
+// it (the audit + the carriers need the integral), and precomputes stage-time
+// cumulative tables so the per-move re-derivation tier stays O(log n) + a
+// small exact tail. No species words anywhere in this block.
+
+/// Evaluate a generic `Ramp` at `xi` (clamped to [0, 1]).
+/// Polynomial: ascending Horner over `coeffs[0..=degree]`. Piecewise:
+/// the same linear-interpolation law `piecewise_value` uses. Sampled:
+/// uniform-grid linear lookup.
+pub(crate) fn generic_ramp_eval(
+    ramp: &ocs_plugin_api::host::Ramp,
+    xi: f64,
+) -> f64 {
+    let xi = xi.clamp(0.0, 1.0);
+    match ramp {
+        ocs_plugin_api::host::Ramp::Polynomial { degree, coeffs } => {
+            let d = (*degree).min(3) as usize;
+            let mut acc = 0.0;
+            for i in (0..=d).rev() {
+                acc = acc * xi + coeffs[i];
+            }
+            acc
+        }
+        ocs_plugin_api::host::Ramp::Piecewise { count, knots } => {
+            let active = (*count).clamp(1, knots.len() as u32) as usize;
+            let knots = &knots[..active];
+            // The linear-interpolation law: between knots the value runs
+            // from r0 to r1; before the first / after the last, clamp.
+            if xi <= knots[0].0 {
+                return knots[0].1;
+            }
+            for pair in knots.windows(2) {
+                let (x0, v0) = pair[0];
+                let (x1, v1) = pair[1];
+                if x1 <= x0 {
+                    continue;
+                }
+                if xi <= x1 {
+                    let frac = (xi - x0) / (x1 - x0);
+                    return v0 + (v1 - v0) * frac;
+                }
+            }
+            knots[knots.len() - 1].1
+        }
+        ocs_plugin_api::host::Ramp::Sampled { n, values } => {
+            let count = (*n).clamp(1, values.len() as u32) as usize;
+            if count == 1 {
+                return values[0];
+            }
+            let t = xi * (count - 1) as f64;
+            let i0 = (t.floor() as usize).min(count - 2).max(0);
+            let frac = t - i0 as f64;
+            values[i0] + (values[i0 + 1] - values[i0]) * frac
+        }
+    }
+}
+
+/// Integrate a generic `Ramp` over [0, xi]. Polynomial: the antiderivative
+/// in closed form. Piecewise: the audited per-interval quadratic
+/// accumulation (`piecewise_value`'s own law — it integrates the linear
+/// ramp; the name predates the v2 contract, the switch wave keeps it as
+/// the piecewise antiderivative). Sampled: trapezoidal accumulation (the
+/// grid's own law — the audit's deviation floor derives from the table
+/// spacing, engine-verified).
+pub(crate) fn generic_ramp_integral(
+    ramp: &ocs_plugin_api::host::Ramp,
+    xi: f64,
+) -> f64 {
+    let xi = xi.clamp(0.0, 1.0);
+    match ramp {
+        ocs_plugin_api::host::Ramp::Polynomial { degree, coeffs } => {
+            let d = (*degree).min(3) as usize;
+            let mut acc = 0.0;
+            for i in (0..=d).rev() {
+                acc = (acc + coeffs[i] / (i as f64 + 1.0)) * xi;
+            }
+            // the loop yields Σ coeffs[i]·xi^(i+1)/(i+1) in ascending order
+            acc
+        }
+        ocs_plugin_api::host::Ramp::Piecewise { count, knots } => {
+            let active = (*count).clamp(1, knots.len() as u32) as usize;
+            piecewise_value(&knots[..active], xi)
+        }
+        ocs_plugin_api::host::Ramp::Sampled { n, values } => {
+            let count = (*n).clamp(1, values.len() as u32) as usize;
+            if count == 1 {
+                return 0.0;
+            }
+            let step = 1.0 / (count - 1) as f64;
+            let full = (xi / step).floor() as usize;
+            let full = full.min(count - 1);
+            let mut total = 0.0;
+            for i in 0..full {
+                total += (values[i] + values[i + 1]) * 0.5;
+            }
+            total *= step;
+            let done_at = full as f64 * step;
+            let tail = xi - done_at;
+            if tail > 0.0 && full < count - 1 {
+                total += (values[full] + values[full + 1]) * 0.5 * tail;
+            }
+            total
+        }
+    }
+}
+
 fn plan_local_theta(species: &HorizontalSegmentSpecies, vitals: &Vitals, s: f64) -> f64 {
     match species {
         HorizontalSegmentSpecies::Line => 0.0,
@@ -2927,3 +3037,79 @@ mod tests {
         validate_segment(ParametricPlane::Plan, segment).expect("the parity segment validates")
     }
 }
+
+/// The v2 generic ramp machinery's own tests (additive now; the switch wave
+/// rewires the staging/drag onto these and the named-species arms leave).
+#[cfg(test)]
+mod generic_ramp_tests {
+    use super::*;
+
+    fn ramp_poly(degree: u8, coeffs: [f64; 4]) -> ocs_plugin_api::host::Ramp {
+        ocs_plugin_api::host::Ramp::Polynomial { degree, coeffs }
+    }
+
+    #[test]
+    fn polynomial_ramp_evals_asc_coeffs() {
+        // v(xi) = 2 + 3·xi: v(0.5) = 3.5; ∫[0,0.5] = 2·0.5 + 3·0.5²/2 = 1.375.
+        let ramp = ramp_poly(1, [2.0, 3.0, 0.0, 0.0]);
+        assert!((generic_ramp_eval(&ramp, 0.5) - 3.5).abs() < 1e-12);
+        assert!((generic_ramp_integral(&ramp, 0.5) - 1.375).abs() < 1e-12);
+        // A constant kappa=1 integrates to the full unit over [0,1].
+        let ramp = ramp_poly(0, [1.0, 0.0, 0.0, 0.0]);
+        assert!((generic_ramp_integral(&ramp, 1.0) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn piecewise_ramp_evals_and_integrates_quadratically() {
+        // A triangle: knots (0,0), (0.5,1), (1,0) — value peak 0.5 at xi .25;
+        // the exact integral (linear law) = the triangle area = 0.5.
+        let ramp = ocs_plugin_api::host::Ramp::Piecewise {
+            count: 3,
+            knots: [(0.0, 0.0), (0.5, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)],
+        };
+        assert!((generic_ramp_eval(&ramp, 0.25) - 0.5).abs() < 1e-12);
+        assert!((generic_ramp_integral(&ramp, 1.0) - 0.5).abs() < 1e-12);
+        assert!((generic_ramp_integral(&ramp, 0.5) - 0.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn sampled_ramp_matches_the_piecewise_within_the_grid() {
+        // n=201 samples over the same triangle law; the integral within the
+        // trapezoid law's local error, the value within one grid step.
+        let ramp = ocs_plugin_api::host::Ramp::Sampled {
+            n: 201,
+            values: (0..201)
+                .map(|i| {
+                    let xi = i as f64 / 200.0;
+                    if xi <= 0.5 {
+                        2.0 * xi
+                    } else {
+                        2.0 - 2.0 * xi
+                    }
+                })
+                .collect(),
+        };
+        let eval = generic_ramp_eval(&ramp, 0.25);
+        assert!((eval - 0.5).abs() < 1.0 / 200.0);
+        let total = generic_ramp_integral(&ramp, 1.0);
+        assert!(
+            (total - 0.5).abs() < 1e-4,
+            "sampled trapezoid integral: {total}"
+        );
+    }
+
+    #[test]
+    fn ramp_eval_and_integral_are_bit_deterministic_and_clamped() {
+        let ramp = ramp_poly(2, [1.0, -3.0, 2.0, 0.0]);
+        let a = generic_ramp_eval(&ramp, 0.3);
+        let b = generic_ramp_eval(&ramp, 0.3);
+        assert_eq!(a.to_bits(), b.to_bits(), "the eval must be bit-stable");
+        let ia = generic_ramp_integral(&ramp, 0.3);
+        let ib = generic_ramp_integral(&ramp, 0.3);
+        assert_eq!(ia.to_bits(), ib.to_bits(), "the integral must be bit-stable");
+        assert!((generic_ramp_eval(&ramp, -2.0) - generic_ramp_eval(&ramp, 0.0)).abs() < 1e-15);
+        assert!((generic_ramp_eval(&ramp, 5.0) - generic_ramp_eval(&ramp, 1.0)).abs() < 1e-15);
+        assert!((generic_ramp_integral(&ramp, 5.0) - generic_ramp_integral(&ramp, 1.0)).abs() < 1e-15);
+    }
+}
+
