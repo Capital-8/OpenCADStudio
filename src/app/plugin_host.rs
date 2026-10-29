@@ -15793,11 +15793,6 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         app.tabs[0].is_start = false;
         let mut broken = staging_plan_chain();
         let mut host = HostSession::new(&mut app, 0);
-        // Broken tolerances refuse before anything changes.
-        assert!(host.stage_parametric_chain("bad", &broken, 0.0).is_err());
-        assert!(host.stage_parametric_chain("bad", &broken, -1.0).is_err());
-        // Broken declared data refuses too.
-        broken.segments[0].length = -1.0;
         let epoch_before = host.app.tabs[0].scene.geometry_epoch;
         // Broken tolerances refuse before anything changes.
         assert!(host.stage_parametric_chain("bad", &broken, 0.0).is_err());
@@ -15973,6 +15968,64 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         for handle in &handles {
             assert!(app.tabs[0].scene.document.get_entity(*handle).is_none());
         }
+    }
+
+    #[test]
+    fn class_stamp_and_display_set_survive_dxf_and_dwg_round_trips() {
+        // The stamp's file-level law: the identity stamp (the XDATA record
+        // under the auto-registered APPID) and the staged display set
+        // survive BOTH file formats with empty loss rows; the stamp values
+        // (schema version + record linkage) stay byte-identical.
+        use codec::{Dwg, Dxf, Format};
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.tabs[0].is_start = false;
+        install_class_owner();
+        let handles;
+        {
+            let mut host = HostSession::new(&mut app, 0);
+            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            handles = host
+                .stage_plugin_class_instance("CVIFC", &traverse_instance())
+                .expect("the class instance stages");
+        }
+        let read_stamp = |document: &codec::Document, handle: codec::Handle| {
+            let entity = document
+                .get_entity(handle)
+                .unwrap_or_else(|| panic!("staged entity {handle:?} lost"));
+            entity
+                .common()
+                .extended_data
+                .get_record("CVI_ALIGN_DISPLAY")
+                .unwrap_or_else(|| panic!("the class identity stamp was lost"))
+                .values
+                .clone()
+        };
+        fn round_trip<F: Format>(
+            format: &F,
+            document: &codec::Document,
+            handles: &[codec::Handle],
+            stamp: &dyn Fn(&codec::Document, codec::Handle) -> Vec<codec::xdata::XDataValue>,
+            name: &str,
+        ) {
+            let (bytes, losses) = format.write(document).unwrap();
+            assert!(losses.is_empty(), "{name} write must not lose anything: {losses:?}");
+            let (back, read_losses) = format.read(&bytes).unwrap();
+            assert!(
+                read_losses.is_empty(),
+                "{name} read must not lose anything: {read_losses:?}"
+            );
+            for handle in handles {
+                let expected = stamp(document, *handle);
+                assert_eq!(
+                    stamp(&back, *handle),
+                    expected,
+                    "{name}: the class stamp must be byte-identical"
+                );
+            }
+        }
+        round_trip(&Dxf, &app.tabs[0].scene.document, &handles, &read_stamp, "DXF");
+        round_trip(&Dwg, &app.tabs[0].scene.document, &handles, &read_stamp, "DWG");
     }
 
     #[test]
