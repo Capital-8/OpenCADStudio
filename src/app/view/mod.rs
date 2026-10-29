@@ -2802,7 +2802,7 @@ bg={bg_ms:.1}ms n={view_count}"
                             iso_plane: self.iso_plane,
                             clean_screen: self.clean_screen,
                             linear_format: tab.scene.document.header.linear_unit_format,
-                            isolation_active: tab.scene.is_isolation_active(),
+                            isolation_active: tab.scene.has_hidden_objects(),
                             transparency_display: tab.scene.transparency_display,
                             quick_properties: self.quick_properties,
                             selection_filter_active: tab.scene.selection_filter_active(),

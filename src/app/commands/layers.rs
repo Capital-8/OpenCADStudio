@@ -634,9 +634,12 @@ impl OpenCADStudio {
                 }
             }
 
-            // UNISOLATEOBJECTS — bring back everything hidden by Isolate / Hide
+            // UNISOLATEOBJECTS — bring back everything hidden by Isolate / Hide,
+            // including objects the drawing was saved with as invisible (e.g.
+            // hidden by another CAD program's HIDEOBJECTS).
             "UNISOLATEOBJECTS" => {
-                if self.tabs[i].scene.is_isolation_active() {
+                let session = self.tabs[i].scene.is_isolation_active();
+                if session {
                     let before = self.tabs[i].scene.object_isolation.clone();
                     let selected_before = self.tabs[i].scene.selected.iter().copied().collect();
                     self.tabs[i].scene.end_isolation();
@@ -646,6 +649,21 @@ impl OpenCADStudio {
                         before,
                         selected_before,
                     );
+                }
+                let dirty_before = self.tabs[i].dirty;
+                let originals = self.tabs[i].scene.show_persisted_hidden_objects();
+                let shown = !originals.is_empty();
+                if shown {
+                    self.push_entity_group_history(
+                        i,
+                        "UNISOLATEOBJECTS",
+                        originals,
+                        Vec::new(),
+                        dirty_before,
+                    );
+                    self.tabs[i].dirty = true;
+                }
+                if session || shown {
                     self.command_line
                         .push_info(crate::t!("Isolation ended — all objects shown.").as_ref());
                 } else {
