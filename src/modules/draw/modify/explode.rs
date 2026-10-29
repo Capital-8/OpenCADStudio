@@ -89,7 +89,10 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
         }
         // The codec's pieces match ours for these (and keep an LWPOLYLINE's
         // own extrusion); the object data rides along as with every piece.
-        EntityType::LwPolyline(_) | EntityType::Polyline3D(_) | EntityType::Hatch(_) => entity
+        EntityType::LwPolyline(_)
+        | EntityType::Polyline2D(_)
+        | EntityType::Polyline3D(_)
+        | EntityType::Hatch(_) => entity
             .explode()
             .into_iter()
             .map(|mut piece| {
@@ -97,7 +100,6 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
                 piece
             })
             .collect(),
-        EntityType::Polyline2D(p) => explode_polyline2d(p),
         EntityType::Polyline(p) => explode_polyline(p),
         // A MINSERT expands to one copy of the block per cell; leave arrays
         // too large to materialize intact instead of exhausting memory.
