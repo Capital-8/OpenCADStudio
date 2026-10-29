@@ -4768,12 +4768,13 @@ fn dimtmove_one_text(
     document: Option<&Document>,
 ) -> Option<MovedText> {
     let s = style.filter(|s| s.dimtmove == 1)?;
-    let text_width = dimension_text_width(dim, style, text_height, document);
     let base = dim.base();
     if !base.text_user_positioned {
         return None;
     }
     let point = stored_text_point(dim)?;
+    // Measured in the drawing's font only for text the user placed.
+    let text_width = dimension_text_width(dim, style, text_height, document);
     let gap = s.dimgap.abs() * dim_scale;
     let arrow = s.dimasz * dim_scale;
     let reach = moved_text_reach(s, text_height, dim_scale);
