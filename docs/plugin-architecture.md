@@ -555,26 +555,41 @@ record linkage; `write_record` auto-registers the APPID so DXF/DWG round
 trips keep the stamp byte-identical).
 
 **Grip editing on the derived path.** Custom-grip drags stream per-move
-geometry today (the v11/v12 lane: the plugin answers `CustomGripEvent`s
-with `preview` wires and `live_entities`, the host coalesces moves, settle
-stays the plugin's one write window). `CustomGripResponse.descriptor` (a
-serde-default field — the `live_entities` precedent) is the wire hook
-for the next step: a Begin answer can hand the host a live *design*, letting
-the host re-derive the preview per cursor move with **zero Move frames
-crossing the IPC**. Measured on the bench's grip-edit section: even the
-worst case (a clothoid's Fresnel re-integration + chord refinement per
-move) sits at ~30 µs against a 16.7 ms frame, so host-local re-derivation
-wins on both latency and traffic; the drag-pipeline plumbing is the planned
-follow-up. Editing class parameters travels the records, not the descriptor:
-a parameter write goes through `update_xrecords`, the plugin sees the
-record-dirty notification and re-stages from its own schema. The grip-edit
-correctness contract is pinned engine-side and session-side (no new code —
-the tests): a grip drag revises one DECLARED parameter, the plugin's honest
-re-declare propagates the moved joint from `sample_parametric` (never a
-duplicated constant), the audited seam law holds on the edited chain, and
-the display set re-applies over the SAME handles in place — count-stable,
-stamps and reference-only designations intact, one undo step round-tripping
-the original.
+geometry when the declaration is unserved (the v11/v12 lane: the plugin
+answers `CustomGripEvent`s with `preview` wires and `live_entities`, the
+host coalesces moves, settle stays the plugin's one write window).
+`CustomGripResponse.descriptor` (a serde-default field — the
+`live_entities` precedent) LANDED the descriptor path the branch's drag
+arc (the squash of the v15/v16 layers): a Begin answer hands the host a
+live *design* plus the per-move tolerance, and when the whole declaration
+is serviceable (the profile chain, the END-side drive row, the segment in
+range, the class stamp resolving a non-empty display set) the host
+re-derives the display set LOCALLY per coalesced cursor move along the
+record model's own laws — **zero Move frames crossing the IPC**; a
+refused move keeps the last good design with one headline, and every
+unserved declaration keeps the streaming path. Measured on the bench's
+grip-edit section: the per-move re-derivation (a clothoid's Fresnel
+re-integration + chord refinement per move) sits in the tens of
+microseconds against a 16.7 ms frame (the staging bench's grip-edit
+section measures it: ~18 µs/move for the declared-ramp carrier, sub-µs
+for the bezier-carrier cubic), so host-local re-derivation wins on both
+latency and traffic. The
+drag's settle keeps the plugin's one write window: the byte-identical
+restore of the live set BEFORE the settle lands, records first, then the
+re-stage — exactly one plugin-labeled undo step. Editing class parameters
+travels the records, not the descriptor: a parameter write goes through
+`update_xrecords`, the plugin sees the record-dirty notification and
+re-stages from its own schema. The grip-edit correctness contract is
+pinned engine-side and session-side (no new code — the tests): a grip
+drag revises one DECLARED parameter, the plugin's honest re-declare
+propagates the moved joint from `sample_parametric` (never a duplicated
+constant), the audited seam law holds on the edited chain, and the
+display set re-applies over the SAME handles in place — count-stable,
+stamps and reference-only designations intact, one undo step
+round-tripping the original. The session pair crosses the wire where the
+reader is concerned: `PluginClassInstanceProperties` frames (additive,
+API v14) serve a plugin's read, and the python `ocs` surface names it
+`plugin_class_instance_properties`.
 
 **Class parameter schema and the properties pair.** A declaration can
 now declare its parameters in the schema (`PluginClassParameter`: name +
