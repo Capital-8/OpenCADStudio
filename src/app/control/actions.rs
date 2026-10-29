@@ -97,6 +97,7 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
 }
 pub(super) const NAMES: &[&str] = &[
     "close_modal",
+    "recovery_accept",
     "conversion_loss_save_anyway",
     "conversion_loss_back",
     // Native-only: the "changed outside" dialog does not exist in the web
@@ -1326,8 +1327,16 @@ impl OpenCADStudio {
     }
     pub(super) fn control_ui_action(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         let name = string(req, "name")?;
+        // Without a prompt there is no failed open to retry.
+        if name == "recovery_accept"
+            && self.active_modal != Some(crate::app::ModalKind::RecoveryPrompt)
+        {
+            return Ok(Task::none());
+        }
         let msg = match name {
             "close_modal" => Message::CloseModal,
+            // The recovery prompt's Recover button; `close_modal` declines.
+            "recovery_accept" => Message::RecoveryAttempt,
             // The conversion-loss warning's choices: save with the losses it
             // lists, or drop the held-back save.
             "conversion_loss_save_anyway" => Message::ConversionLossProceed,

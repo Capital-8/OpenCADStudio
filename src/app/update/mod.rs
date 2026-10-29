@@ -1765,7 +1765,10 @@ impl OpenCADStudio {
                 if self.opening.as_ref().map(|opening| opening.id) != Some(open_id) {
                     return Task::none();
                 }
-                if e.recovery_available {
+                // An automation open has nobody to answer the recovery
+                // prompt, so it fails like any other unreadable drawing
+                // instead of holding the request open behind the modal.
+                if e.recovery_available && !crate::app::control::controlled_open_pending(self) {
                     if let Some(opening) = self.opening.as_mut() {
                         opening.recovery_error = Some(e.message);
                         opening.recovery_read_stats = e.read_stats;

@@ -1963,6 +1963,13 @@ pub(super) fn action_names() -> &'static [&'static str] {
     actions::NAMES
 }
 
+pub(super) fn controlled_open_pending(app: &OpenCADStudio) -> bool {
+    app.control
+        .pending
+        .as_ref()
+        .is_some_and(|pending| pending.request["op"] == "open")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2515,6 +2522,87 @@ mod tests {
             }),
         );
         assert_eq!(reply["status"], "completed", "{reply}");
+    }
+
+    fn recoverable_open_failure(app: &mut OpenCADStudio) {
+        app.opening = Some(crate::app::OpenProgress {
+            id: 7,
+            name: "damaged.dwg".to_string(),
+            source_path: None,
+            size_bytes: 0,
+            state: std::sync::Arc::new(crate::io::OpenProgressState::new(
+                crate::app::OPEN_PHASE_READING,
+            )),
+            started: std::time::Instant::now(),
+            recovery_error: None,
+            recovery_read_stats: None,
+            fingerprint: None,
+        });
+        let _ = app.update(Message::FileOpened(
+            7,
+            Err(crate::io::OpenLoadError {
+                message: "Invalid record at handle 0x5B87, type_code=37".to_string(),
+                source_sha256: None,
+                read_stats: None,
+                recovery_available: true,
+            }),
+        ));
+    }
+
+    #[test]
+    fn controlled_open_fails_instead_of_waiting_on_the_recovery_prompt() {
+        let mut app = OpenCADStudio::new_for_test();
+        let errors = app.command_line.error_revision;
+        app.control.pending = Some(Operation {
+            id: "open-damaged".to_string(),
+            request: json!({"op":"open","path":"damaged.dwg"}),
+            pending: 0,
+            error_revision: errors,
+            document_id: None,
+            origin_document: app.tabs[app.active_tab].id,
+            geometry_revision: 0,
+            result: json!({}),
+            cancelled: false,
+        });
+        recoverable_open_failure(&mut app);
+        assert!(app.opening.is_none());
+        assert_ne!(
+            app.active_modal,
+            Some(crate::app::ModalKind::RecoveryPrompt)
+        );
+        app.control_settle();
+        let reply = app
+            .control_request(json!({"op":"operation","request_id":"open-damaged"}))
+            .0;
+        assert_eq!(reply["status"], "failed", "{reply}");
+        assert!(app.control.pending.is_none());
+    }
+
+    #[test]
+    fn recovery_prompt_is_answerable_through_actions() {
+        let mut app = OpenCADStudio::new_for_test();
+        assert!(crate::app::automation_action_names().contains(&"recovery_accept"));
+        let reply = request(
+            &mut app,
+            json!({"op":"action","request_id":"accept-none","name":"recovery_accept"}),
+        );
+        assert_eq!(reply["status"], "completed", "{reply}");
+
+        recoverable_open_failure(&mut app);
+        assert_eq!(
+            app.active_modal,
+            Some(crate::app::ModalKind::RecoveryPrompt)
+        );
+        let reply = request(
+            &mut app,
+            json!({"op":"action","request_id":"decline","name":"close_modal"}),
+        );
+        assert_eq!(reply["status"], "completed", "{reply}");
+        assert!(app.opening.is_none());
+        assert_ne!(
+            app.active_modal,
+            Some(crate::app::ModalKind::RecoveryPrompt)
+        );
     }
 
     #[test]

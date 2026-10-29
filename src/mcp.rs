@@ -34,9 +34,10 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// `grip_drag` became optional-`handle` (built-in entity grips) plus optional
 /// `plugin` (dragging a plugin-declared custom grip, routed to its owner).
 /// Sixteen generated intent tools now follow the four facades. `node_graph`
-/// joined the execute ops; the action list gained `extraction_outdated`.
+/// joined the execute ops; the action list gained `extraction_outdated`,
+/// `print_all` and `recovery_accept`.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "bcd8c8774586fe5db3b51b28bb3b7ba8d376886c4a4e91188e59551d63bf061d";
+const TOOL_SCHEMA_DIGEST: &str = "1dc8afde64a5fedd6baa11191c440e986c471d4e4d7b219c18435b13d6c59f9c";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
