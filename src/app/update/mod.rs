@@ -689,6 +689,13 @@ impl OpenCADStudio {
                     }
                 }
             }
+            // Enter in the unsaved-block question saves and closes.
+            if self.active_modal == Some(super::ModalKind::BlockEditChanges)
+                && (matches!(msg, Message::CommandFinalize)
+                    || matches!(&msg, Message::ShortcutPressed(key) if key.rsplit('+').next() == Some("ENTER") || key.rsplit('+').next() == Some("RETURN")))
+            {
+                return self.update(Message::BlockEditChangesSave);
+            }
             if self.active_modal == Some(super::ModalKind::BlockEditPicker)
                 && (matches!(msg, Message::CommandFinalize)
                     || matches!(&msg, Message::ShortcutPressed(key) if key.rsplit('+').next() == Some("ENTER") || key.rsplit('+').next() == Some("RETURN")))
