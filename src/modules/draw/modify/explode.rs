@@ -87,10 +87,18 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
                 })
                 .collect()
         }
-        EntityType::LwPolyline(p) => explode_lwpolyline(p),
+        // The codec's pieces match ours for these (and keep an LWPOLYLINE's
+        // own extrusion); the object data rides along as with every piece.
+        EntityType::LwPolyline(_) | EntityType::Polyline3D(_) | EntityType::Hatch(_) => entity
+            .explode()
+            .into_iter()
+            .map(|mut piece| {
+                piece.common_mut().extended_data = entity.common().extended_data.clone();
+                piece
+            })
+            .collect(),
         EntityType::Polyline2D(p) => explode_polyline2d(p),
         EntityType::Polyline(p) => explode_polyline(p),
-        EntityType::Polyline3D(p) => explode_polyline3d(p),
         // A MINSERT expands to one copy of the block per cell; leave arrays
         // too large to materialize intact instead of exhausting memory.
         EntityType::Insert(ins)
@@ -116,7 +124,6 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
         EntityType::Leader(leader) => explode_leader(leader, document),
         EntityType::MText(t) => crate::entities::mtext::explode_mtext(t, document),
         EntityType::Region(region) => explode_region(region),
-        EntityType::Hatch(hatch) => explode_hatch(hatch),
         _ => vec![],
     }
 }
@@ -493,37 +500,6 @@ fn explode_mline(ml: &MLine) -> Vec<EntityType> {
     }
 
     result
-}
-
-// ── Hatch explode ──────────────────────────────────────────────────────────
-
-/// The pattern lines exactly as the renderer draws them, lifted from world XY
-/// back onto the hatch plane. Solid and gradient fills yield nothing, so they
-/// stay intact and are reported as not explodable.
-fn explode_hatch(hatch: &codec::entities::Hatch) -> Vec<EntityType> {
-    let Some(model) = crate::scene::Scene::hatch_model_from_dxf(hatch, [1.0; 4]) else {
-        return vec![];
-    };
-    let plane = crate::entities::curve::ocs_plane(hatch.normal, hatch.elevation);
-    let lift = |xy: [f64; 2]| plane.coordinates_at_xy(xy).map(|uv| plane.point_at(uv));
-    let mut common = hatch.common.clone();
-    common.handle = Handle::NULL;
-    common.owner_handle = Handle::NULL;
-    common.xdictionary_handle = None;
-    common.reactors.clear();
-    model
-        .pattern_segments()
-        .into_iter()
-        .filter_map(|[a, b]| {
-            let (a, b) = (lift(a)?, lift(b)?);
-            Some(EntityType::Line(LineEnt {
-                common: common.clone(),
-                start: Vector3::new(a[0], a[1], a[2]),
-                end: Vector3::new(b[0], b[1], b[2]),
-                ..LineEnt::new()
-            }))
-        })
-        .collect()
 }
 
 // ── Region explode ─────────────────────────────────────────────────────────
