@@ -89,9 +89,29 @@ plugin compiles against. Two tiers:
 
 A plugin enables the `host` feature.
 
-### Build-time ABI metadata
+### Compatibility from API v14
 
-For API v4 and later the host records two pieces of build-time metadata that
+A plugin built for API v14 or later runs the runner loop in its own code: the
+host's runner process loads the library and calls its C entry point
+`ocs_plugin_run` (emitted by `export_plugin!`) with the socket name, and the
+plugin talks to the host over IPC from there. No Rust type crosses the library
+boundary, so **the plugin's compiler and codec commit no longer have to match
+the host's**, and `plugin.toml` needs neither `rustc_version` nor
+`acadrust_source`.
+
+What both sides still share is the shape of the codec types they exchange.
+The host passes its fingerprint of those shapes (`version_info::wire_schema`,
+a hash of the embedded type registry) to the runner in `OCS_WIRE_SCHEMA`; a
+plugin whose own fingerprint differs stops with a message naming both. Codec
+commits that do not change those shapes, which is most of them, leave a
+plugin working. Rebuild against a newer `ocs_plugin_api` when the message
+says so.
+
+The gates below apply to API v4 to v13 plugins only.
+
+### Build-time ABI metadata (API v4 to v13)
+
+For API v4 to v13 the host records two pieces of build-time metadata that
 affect whether a prebuilt plugin can safely be loaded:
 
 - `acadrust_source` — the exact git source of the `opencadcodec` crate the host was
@@ -243,14 +263,14 @@ version = "0.1.0"
 description = "…"
 
 [opencad]
-api_version = 5
+api_version = 14
 ribbon_order = 50
 command_prefixes = ["EX_"]
 xdata_apps = []
-# Both are filled at release-build time; see the CI step below.
-rustc_version = "rustc 1.98.0 (hash date)"
-acadrust_source = "git+https://github.com/HakanSeven12/opencadcodec.git?rev=<short>#<full-40-char-commit>"
 ```
+
+(API v4 to v13 plugins also declare `rustc_version` and `acadrust_source`,
+filled at release-build time.)
 
 The full, buildable scaffold is in [`docs/plugin-template/`](plugin-template);
 the live reference is the

@@ -1174,6 +1174,32 @@ macro_rules! export_plugin {
             $crate::API_VERSION
         }
 
+        /// The whole runner, run by this plugin's own build so no Rust type
+        /// crosses the library boundary (API v14 and later). `socket` is the
+        /// host's socket name; returns the process exit code.
+        #[no_mangle]
+        pub extern "C" fn ocs_plugin_run(socket: *const ::std::os::raw::c_char) -> i32 {
+            if socket.is_null() {
+                return 2;
+            }
+            let socket = unsafe { ::std::ffi::CStr::from_ptr(socket) }
+                .to_string_lossy()
+                .into_owned();
+            match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let plugin: ::std::boxed::Box<dyn $crate::host::BuiltinPlugin> =
+                    ::std::boxed::Box::new($ctor);
+                $crate::runner::run_with_plugin(&socket, $crate::API_VERSION, plugin)
+                    .map_err(|e| e.to_string())
+            })) {
+                ::std::result::Result::Ok(::std::result::Result::Ok(())) => 0,
+                ::std::result::Result::Ok(::std::result::Result::Err(e)) => {
+                    eprintln!("[plugin] {e}");
+                    1
+                }
+                ::std::result::Result::Err(_) => 2,
+            }
+        }
+
         #[no_mangle]
         pub extern "C" fn ocs_plugin_register(
         ) -> *mut ::std::boxed::Box<dyn $crate::host::BuiltinPlugin> {

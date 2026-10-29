@@ -320,6 +320,10 @@ impl PluginProcess {
             .arg(&socket_name)
             .arg(cdylib_path)
             .env(PLUGIN_TOKEN_ENV, &token)
+            .env(
+                crate::version_info::WIRE_SCHEMA_ENV,
+                crate::version_info::wire_schema(),
+            )
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
