@@ -856,12 +856,8 @@ Done:
       into the API v14 arc); the grip-edit descriptor hook rides
       `CustomGripResponse` (inert default).
 
-Next:
+Landed in this branch:
 
-- [ ] Incremental document snapshots instead of cloning `Document` over IPC.
-- [ ] `#[repr(C)]` vtable / strict handshake for cross-toolchain binaries.
-- [ ] Trust: checksums / signatures before spawning plugin processes.
-- [ ] Interchange (LandXML / SWMM) and live `on_entity_committed` hooks.
 - [x] Descriptor-backed grip drags: the Begin descriptor consumed per
       coalesced move (zero Move frames; the declared `drives` row + the
       response's per-move tolerance engage the profile-chain END re-anchor;
