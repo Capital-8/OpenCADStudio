@@ -167,7 +167,7 @@ pub fn plan_explode(
 }
 
 /// Bake multileaders from their context for the given annotation scale, at that
-/// context's stored sizes (AutoCAD does not rescale them to the current scale).
+/// context's stored sizes (they are not rescaled to the current scale).
 pub fn plan_explode_in_context(
     selected: &[(Handle, &EntityType)],
     doc: &Document,
@@ -386,7 +386,7 @@ fn explode_multileader(
             codec::entities::FlowDirectionType::ByStyle => DrawingDirection::ByStyle,
             _ => DrawingDirection::LeftToRight,
         };
-        // AutoCAD explodes the frame into its own polyline: the text box grown by the landing gap.
+        // The frame explodes into its own polyline: the text box grown by the landing gap.
         if ml.text_frame {
             let v_anchor = [
                 MTextVAnchor::Top,
@@ -442,7 +442,7 @@ fn explode_multileader(
     pieces
 }
 
-/// Frame `gap` outside an MTEXT's laid-out text, as AutoCAD writes it: five vertices, last = first.
+/// Frame `gap` outside an MTEXT's laid-out text: five vertices, last = first.
 fn text_frame_polyline(
     text: &codec::entities::MText,
     doc: &Document,
@@ -3574,7 +3574,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             text.background_fill_flags, 0,
-            "AutoCAD keeps the frame out of the MTEXT"
+            "the frame stays out of the MTEXT"
         );
         let frame = pieces
             .iter()
