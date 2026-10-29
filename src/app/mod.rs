@@ -4909,6 +4909,9 @@ pub enum Message {
     PrintAllOptions,
     /// Save the selected layouts as one multi-page PDF.
     PrintAllPdf,
+    /// Save the selected layouts as one multi-page PDF at a given path
+    /// (automation: no file picker).
+    PrintAllPdfTo(std::path::PathBuf),
     /// Callback after the multi-page PDF path is picked or cancelled.
     PrintAllPdfPath(Option<std::path::PathBuf>),
     /// Send the selected layouts to the configured printer as one job.
