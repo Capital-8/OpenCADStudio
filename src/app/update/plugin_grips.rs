@@ -29,6 +29,7 @@ use iced::{Point, Rectangle, Task};
 
 use crate::app::{Message, OpenCADStudio};
 use crate::plugin::grip_points::{self, ActivePluginGrip, GripCandidate};
+use ocs_plugin_api::host::Ramp;
 
 /// Poll slice for an outstanding delivery (kept tiny: the pump reschedules
 /// itself, so the app loop never waits on plugin latency).
@@ -542,13 +543,6 @@ impl OpenCADStudio {
                         descriptor.kind_label(),
                     ));
                 }
-                (Some(descriptor), _) => {
-                    crate::plugin::push_guard_error(format!(
-                        "custom grip begin: the descriptor kind {:?} has no host-served \
-                         derivation; the streaming path continues",
-                        descriptor.kind_label(),
-                    ));
-                }
                 (None, _) => {}
             }
         }
@@ -798,13 +792,14 @@ impl OpenCADStudio {
     //
     // The Begin answer handed the host a live design (the record layer's
     // own grammar): the coalesced cursor move re-derives the display set
-    // LOCALLY — the drive point follows the cursor, the section re-derives
-    // per its species' own record-model laws, the joints propagate from the
-    // engine's own sampling, and the chain's own audit (the staging build)
-    // gates every move. The plugin's settle callback stays the only write
-    // window: the per-move restage is the visual-only phase (originals
-    // stashed once, zero history steps, byte-identical restore before the
-    // settle's push_undo sees the pre-drag document).
+    // LOCALLY — the drive point follows the cursor per the declared anchor
+    // law, the driving ramp re-derives per its arm's own integral law, the
+    // joints propagate from the engine's own sampling, and the chain's own
+    // audit (the staging build) gates every move. The plugin's settle
+    // callback stays the only write window: the per-move restage is the
+    // visual-only phase (originals stashed once, zero history steps,
+    // byte-identical restore before the settle's push_undo sees the
+    // pre-drag document).
 
     /// Engage the descriptor mode when the whole declaration is serviceable.
     /// Everything else keeps the v12 streaming path with one headline.
@@ -896,6 +891,7 @@ impl OpenCADStudio {
             tolerance,
             handles,
             segment,
+            anchor: drive.anchor,
             refusal_noted: false,
         });
     }
@@ -937,7 +933,7 @@ impl OpenCADStudio {
         let segment = drag.segment;
         let tolerance = drag.tolerance;
         let handles = drag.handles.clone();
-        match reanchor_profile_chain(&chain, segment, constrained) {
+        match reanchor_profile_chain(&chain, segment, drag.anchor, constrained) {
             Ok(reanchored) => match crate::parametric::build_display_entities(
                 &reanchored,
                 tolerance,
@@ -1110,19 +1106,38 @@ fn entity_kind_label(entity: &codec::EntityType) -> &'static str {
     }
 }
 
-/// The record model's own END-POINT-FOLLOW re-anchor for a profile chain:
-/// the drive segment's end point becomes the cursor's sheet point (the run
-/// becomes the station span), the section re-derives per ITS species' own
-/// laws, and the downstream joints re-declare from the engine's own
-/// sampling — the crest test's walk, made generic. The result still owes
-/// its final legality to the chain's own audit (the staging build gates
-/// the move).
+/// The generic anchor-law serve for a profile chain (api 14, v2): the
+/// driven segment's declared end re-anchors per the drive's anchor law,
+/// through one generic ramp re-derivation - no per-species host code. The
+/// downstream joints re-declare from the engine's own sampling: each later
+/// segment's start re-bases to the sampled joint (point, sheet direction)
+/// and its driving ramp re-bases by the additive shift that restates the
+/// joint's slope as the ramp's own start value (the arm's shape
+/// preserved). The result still owes its final legality to the chain's own
+/// audit (the staging build gates the move). The plan plane and the START
+/// side keep the streaming path (the engage refusals).
+///
+/// Served anchor laws (profile plane, end side):
+/// - EndStationToXY: the run becomes the cursor's station span and the
+///   ramp's driving data re-derives per its arm's own integral gain so the
+///   segment's end height lands on the cursor's elevation;
+/// - EndElevation: the run is kept; the same end-value re-derivation aims
+///   the cursor's elevation;
+/// - EndGrade: the ramp's end value takes the grade the cursor's sheet
+///   point carries from the segment start (the run is kept; the height
+///   follows the law);
+/// - EndCurvatureScale: the whole driving ramp scales by a factor solved
+///   by the deterministic bracketed bisection toward the cursor's
+///   elevation (the same 16-doubling + 60-bisect discipline);
+/// - Length: the run re-runs to the cursor's station span; the ramp's law
+///   stays; the height follows the law.
 pub(in crate::app) fn reanchor_profile_chain(
     chain: &ocs_plugin_api::host::ParametricChain,
     segment: usize,
+    anchor: ocs_plugin_api::host::AnchorLaw,
     cursor: glam::DVec3,
 ) -> Result<ocs_plugin_api::host::ParametricChain, String> {
-    use ocs_plugin_api::host::{ParametricPlane, ParametricSpecies, VerticalSegmentSpecies};
+    use ocs_plugin_api::host::{AnchorLaw, ParametricPlane};
     const MIN_RUN: f64 = 1e-6;
     if chain.plane != ParametricPlane::Profile {
         return Err("the re-anchor serves the profile sheet only".to_owned());
@@ -1133,132 +1148,85 @@ pub(in crate::app) fn reanchor_profile_chain(
     let mut edited = chain.clone();
     {
         let seg = &mut edited.segments[segment];
-        let run = cursor.x - seg.start_point[0];
-        if !(run > MIN_RUN) {
-            return Err(format!(
-                "the re-anchored run {run:.6} leaves the section's support (a backward or \
-                 tiny station span)"
-            ));
-        }
-        let height = cursor.y;
-        match &mut seg.species {
-            ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient) => {
-                // The tail re-tilts: one gradient, declared on both ends, the
-                // sheet angle follows. The upstream seam re-checks itself in
-                // the chain audit — a wild hand is refused there.
-                let g = (height - seg.start_point[1]) / run;
-                seg.start_gradient = g;
-                seg.end_gradient = g;
-                seg.start_direction = g.atan();
-                seg.length = run;
+        let station0 = seg.start_point[0];
+        let h0 = seg.start_point[1];
+        match anchor {
+            AnchorLaw::EndStationToXY => {
+                let run = cursor.x - station0;
+                if !(run > MIN_RUN) {
+                    return Err(format!(
+                        "the re-anchored run {run:.6} leaves the section's support (a backward \
+                         or tiny station span)"
+                    ));
+                }
+                let w_target = (cursor.y - h0) / run;
+                seg.def.ramp = ramp_with_unit_integral(&seg.def.ramp, w_target)?;
+                seg.def.length = run;
             }
-            ParametricSpecies::Vertical(VerticalSegmentSpecies::ParabolicArc) => {
-                // The mean-gradient law: h(L) = h0 + L*(g1+g2)/2, so the end
-                // height fixes g2; the vertex law fixes R = L/(g2 - g1) — the
-                // exact pair the crest test re-declares by hand.
-                let g2 = 2.0 * (height - seg.start_point[1]) / run - seg.start_gradient;
-                let v = g2 - seg.start_gradient;
-                if v.abs() < 1e-12 {
+            AnchorLaw::EndElevation => {
+                let w_target = (cursor.y - h0) / seg.def.length;
+                seg.def.ramp = ramp_with_unit_integral(&seg.def.ramp, w_target)?;
+            }
+            AnchorLaw::EndGrade => {
+                let run = cursor.x - station0;
+                if run.abs() < 1e-12 {
                     return Err(
-                        "the re-anchored end sits on the entry-slope line, where the vertex \
-                         radius degenerates (declare CONSTANTGRADIENT for the flat run)"
+                        "the grade grip's sheet point shares the segment's start station; the \
+                         grade degenerates"
                             .to_owned(),
                     );
                 }
-                seg.end_gradient = g2;
-                seg.start_radius = run / v;
-                seg.length = run;
+                // The end grade = the bearing the cursor's sheet point
+                // carries from the segment start; the height follows the
+                // law.
+                let grade = (cursor.y - h0) / run;
+                seg.def.ramp = ramp_with_end_value(&seg.def.ramp, grade);
             }
-            ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc) => {
-                // The circular's exact run law: sin(t1) = sin(t0) + run*k with
-                // k = 1/R, and h = h0 + (cos(t0) - cos(t1))/k. One unknown k;
-                // a deterministic bracketed bisection through the law.
-                let theta0 = seg.start_gradient.atan();
-                let s0 = theta0.sin();
-                let c0 = theta0.cos();
-                let height_of = |k: f64, seg: &ocs_plugin_api::host::ParametricSegment| -> Option<f64> {
-                    if k.abs() < 1e-12 {
+            AnchorLaw::EndCurvatureScale => {
+                // The scale voices the whole driving law (the end value with
+                // it): the deterministic bracketed bisection toward the
+                // cursor's elevation, seeded at unity.
+                let current = seg.def.ramp.clone();
+                let length = seg.def.length;
+                let voice = |scale: f64| {
+                    if !scale.is_finite() {
                         return None;
                     }
-                    let s1 = s0 + run * k;
-                    if !(s1 > -1.0 && s1 < 1.0) {
-                        return None;
-                    }
-                    Some(seg.start_point[1] + (c0 - s1.asin().cos()) / k)
+                    let scaled = scale_ramp(&current, scale);
+                    Some(
+                        h0
+                            + length
+                                * crate::parametric::ramp_integral(&scaled, 1.0),
+                    )
                 };
-                let k = solve_by_bisection(
-                    |k| height_of(k, seg),
-                    1.0 / seg.start_radius,
-                    height,
-                )?;
-                seg.start_radius = 1.0 / k;
-                let s1 = s0 + run * k;
-                seg.end_gradient = s1.asin().tan();
-                seg.length = run;
+                let scale = solve_by_bisection(voice, 1.0, cursor.y)?;
+                seg.def.ramp = scale_ramp(&current, scale);
             }
-            ParametricSpecies::Vertical(VerticalSegmentSpecies::Clothoid)
-            | ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(_)) => {
-                // The sigmoid-height law has no closed form through the chain
-                // grammar: the end curvature solves by the engine's own
-                // sampling (bisection through sample_chain over the FRONT —
-                // the earlier segments are untouched, so the front's total run
-                // is station-true and the sampled end height is the law's own).
-                let front_end = edited
-                    .segments
-                    .iter()
-                    .take(segment + 1)
-                    .map(|s| s.length)
-                    .sum::<f64>();
-                let front_height_of =
-                    |k1: f64,
-                     edited: &ocs_plugin_api::host::ParametricChain,
-                     front_end: f64|
-                     -> Option<f64> {
-                        // The FRONT-ONLY chain: the drive's end is the front's
-                        // end, so the total lands strictly inside (the exact
-                        // joint of the full chain would make the sample
-                        // ambiguous).
-                        let mut front = edited.clone();
-                        front.segments.truncate(segment + 1);
-                        if let ParametricSpecies::Vertical(VerticalSegmentSpecies::Clothoid)
-                        | ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(_)) =
-                            &mut front.segments[segment].species
-                        {
-                            front.segments[segment].end_curvature = k1;
-                        } else {
-                            return None;
-                        }
-                        crate::parametric::sample_chain(&front, front_end)
-                            .ok()
-                            .flatten()
-                            .map(|sample| sample.point[1])
-                    };
-                let k1 = solve_by_bisection(
-                    |k1| front_height_of(k1, &edited, front_end),
-                    edited.segments[segment].end_curvature,
-                    height,
-                )?;
-                edited.segments[segment].end_curvature = k1;
-                edited.segments[segment].length = run;
-            }
-            ParametricSpecies::Horizontal(_) => {
-                return Err("the drive segment is not a profile species".to_owned());
+            AnchorLaw::Length => {
+                let run = cursor.x - station0;
+                if !(run > MIN_RUN) {
+                    return Err(format!(
+                        "the re-anchored run {run:.6} leaves the section's support (a backward \
+                         or tiny station span)"
+                    ));
+                }
+                seg.def.length = run;
             }
         }
     }
     // The downstream re-declaration: the joints propagate from the engine's
-    // own sampling (the crest walk): each later segment's start re-bases to
-    // the sampled joint (point, slope, sheet direction); the species' own
-    // law fields stay declared, re-deriving only what the record model's own
-    // consistency requires (the parabola's vertex radius, the circle's
-    // realized end gradient, the constant's matched pair).
+    // own sampling (the crest walk, arm-generic): each later segment's
+    // start re-bases to the sampled joint (point, sheet direction) and the
+    // driving ramp re-bases by the additive shift that restates the joint's
+    // slope as the ramp's own start value (one delta on every value; the
+    // law's shape preserved).
     let n = edited.segments.len();
     if segment + 1 < n {
         let mut run = edited
             .segments
             .iter()
             .take(segment + 1)
-            .map(|s| s.length)
+            .map(|s| s.def.length)
             .sum::<f64>();
         let mut joint = crate::parametric::sample_chain(&edited, run)
             .ok()
@@ -1272,39 +1240,10 @@ pub(in crate::app) fn reanchor_profile_chain(
             {
                 let seg = &mut edited.segments[j];
                 seg.start_point = joint.point;
-                seg.start_gradient = slope;
                 seg.start_direction = slope.atan();
-                match &mut seg.species {
-                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient) => {
-                        seg.end_gradient = slope;
-                    }
-                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ParabolicArc) => {
-                        let v = seg.end_gradient - slope;
-                        if v.abs() < 1e-12 {
-                            return Err(
-                                "the downstream parabolic re-base degenerates (its gradients \
-                                 matched the joint slope)"
-                                    .to_owned(),
-                            );
-                        }
-                        seg.start_radius = seg.length / v;
-                    }
-                    ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc) => {
-                        let theta0 = slope.atan();
-                        let s1 = theta0.sin() + seg.length / seg.start_radius;
-                        if !(s1 > -1.0 && s1 < 1.0) {
-                            return Err(
-                                "the downstream circular re-base leaves the sloped range"
-                                    .to_owned(),
-                            );
-                        }
-                        seg.start_gradient = slope;
-                        seg.end_gradient = s1.asin().tan();
-                    }
-                    _ => {}
-                }
+                seg.def.ramp = shift_ramp_to_start_value(&seg.def.ramp, slope);
             }
-            run += edited.segments[j].length;
+            run += edited.segments[j].def.length;
             joint = crate::parametric::sample_chain(&edited, run)
                 .ok()
                 .flatten()
@@ -1315,6 +1254,126 @@ pub(in crate::app) fn reanchor_profile_chain(
         }
     }
     Ok(edited)
+}
+
+/// Re-derive the ramp so its unit-span integral W(1) becomes `w_target`,
+/// moving only the arm's own end-sensitive quantity: the polynomial's top
+/// coefficient (the integral's gain per unit of it is 1/(degree+1)), the
+/// piecewise/sampled table's last value (the trapezoid plus clamped-tail
+/// gain of its own interval). Deterministic closed form, no iterations;
+/// the start value and the law's shape stay.
+///
+/// The standing RAMP law: the declared ramp owns [0, 1] of the record
+/// parameter; this re-derivation just re-declares its end-sensitive value
+/// as the anchor's law requires, the gain law each arm's own integral
+/// form provides.
+pub(in crate::app) fn ramp_with_unit_integral(ramp: &Ramp, w_target: f64) -> Result<Ramp, String> {
+    let current = crate::parametric::ramp_integral(ramp, 1.0);
+    let delta = w_target - current;
+    match ramp {
+        Ramp::Polynomial { degree, coeffs } => {
+            let d = *degree as usize;
+            let mut next = *coeffs;
+            next[d] += delta * (d as f64 + 1.0);
+            Ok(Ramp::Polynomial { degree: *degree, coeffs: next })
+        }
+        Ramp::Piecewise { count, knots } => {
+            let active = (*count).clamp(1, knots.len() as u32) as usize;
+            let mut next = *knots;
+            if active == 1 {
+                // A single knot is the constant law: W = the value.
+                next[0].1 += delta;
+            } else {
+                let m = active - 1;
+                let span = knots[m].0 - knots[m - 1].0;
+                // The last interval's trapezoid gain plus the constant
+                // clamped tail after the last knot.
+                let gain = (span * 0.5 + (1.0 - knots[m].0)).max(1e-12);
+                next[m].1 += delta / gain;
+            }
+            Ok(Ramp::Piecewise { count: *count, knots: next })
+        }
+        Ramp::Sampled { n, values } => {
+            let count = (*n).clamp(1, values.len() as u32) as usize;
+            let mut next = values.clone();
+            if count == 1 {
+                next[0] += delta;
+            } else {
+                let step = 1.0 / (count - 1) as f64;
+                next[count - 1] += delta * 2.0 / step;
+            }
+            Ok(Ramp::Sampled { n: *n, values: next })
+        }
+    }
+}
+
+/// Set one ramp's END value (the law's reading at xi = 1) to `end_value`:
+/// the polynomial re-solves its top coefficient from the lower ones, the
+/// piecewise/sampled table re-declares its last value. Deterministic; the
+/// law's shape stays.
+pub(in crate::app) fn ramp_with_end_value(ramp: &Ramp, end_value: f64) -> Ramp {
+    match ramp {
+        Ramp::Polynomial { degree, coeffs } => {
+            let d = *degree as usize;
+            let mut next = *coeffs;
+            let lower: f64 = coeffs[..d].iter().sum();
+            next[d] = end_value - lower;
+            Ramp::Polynomial { degree: *degree, coeffs: next }
+        }
+        Ramp::Piecewise { count, knots } => {
+            let active = (*count).clamp(1, knots.len() as u32) as usize;
+            let mut next = *knots;
+            next[active - 1].1 = end_value;
+            Ramp::Piecewise { count: *count, knots: next }
+        }
+        Ramp::Sampled { n, values } => {
+            let count = (*n).clamp(1, values.len() as u32) as usize;
+            let mut next = values.clone();
+            next[count - 1] = end_value;
+            Ramp::Sampled { n: *n, values: next }
+        }
+    }
+}
+
+/// Scale the whole driving ramp by `scale` (the EndCurvatureScale anchor's
+/// law: every arm's value takes the factor, the end value with them).
+fn scale_ramp(ramp: &Ramp, scale: f64) -> Ramp {
+    match ramp {
+        Ramp::Polynomial { degree, coeffs } => Ramp::Polynomial {
+            degree: *degree,
+            coeffs: coeffs.map(|c| c * scale),
+        },
+        Ramp::Piecewise { count, knots } => Ramp::Piecewise {
+            count: *count,
+            knots: knots.map(|(xi, value)| (xi, value * scale)),
+        },
+        Ramp::Sampled { n, values } => Ramp::Sampled {
+            n: *n,
+            values: values.iter().map(|v| v * scale).collect(),
+        },
+    }
+}
+
+/// Re-base the driving ramp by the additive shift that makes the ramp's
+/// own start value read `start_value`: every arm's values rise by the same
+/// delta, so the law's SHAPE is preserved while its level re-declares (the
+/// downstream legs follow the moved joint exactly this way).
+fn shift_ramp_to_start_value(ramp: &Ramp, start_value: f64) -> Ramp {
+    let delta = start_value - crate::parametric::ramp_eval(ramp, 0.0);
+    match ramp {
+        Ramp::Polynomial { degree, coeffs } => Ramp::Polynomial {
+            degree: *degree,
+            coeffs: coeffs.map(|c| c + delta),
+        },
+        Ramp::Piecewise { count, knots } => Ramp::Piecewise {
+            count: *count,
+            knots: knots.map(|(xi, value)| (xi, value + delta)),
+        },
+        Ramp::Sampled { n, values } => Ramp::Sampled {
+            n: *n,
+            values: values.iter().map(|v| v + delta).collect(),
+        },
+    }
 }
 
 /// Deterministic bracketed bisection: the voice returns `None` where its

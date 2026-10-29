@@ -3466,11 +3466,11 @@ impl<'a> HostSession<'a> {
     }
 
     /// Turn a declared parametric chain into reference-only display geometry
-    /// (API v14, additive) — the engine lives in `crate::parametric`; the
-    /// species evaluation, the seam audit and the entity builds happen
-    /// before any change, so every refusal leaves the document untouched
-    /// and records no undo step. `reference_name` is the caller's identity
-    /// for the staged set (echoed in refusals); the host keeps no registry.
+    /// (API v14 — the engine lives in `crate::parametric`; the generic ramp
+    /// evaluation, the seam audit and the entity builds happen before any
+    /// change, so every refusal leaves the document untouched and records
+    /// no undo step. `reference_name` is the caller's identity for the
+    /// staged set (echoed in refusals); the host keeps no registry.
     pub fn stage_parametric_chain(
         &mut self,
         reference_name: &str,
@@ -3482,15 +3482,8 @@ impl<'a> HostSession<'a> {
                 "chain {reference_name:?} stages nothing: the chain carries no segments"
             ));
         }
-        let (entities, _carriers) =
-            crate::parametric::build_display_entities(chain, tolerance).map_err(|e| {
-                format!("chain {reference_name:?}: {e}")
-            })?;
-        if entities.is_empty() {
-            // Every segment was a zero-length terminator: nothing to stage,
-            // nothing to record.
-            return Ok(Vec::new());
-        }
+        let (entities, _carriers) = crate::parametric::build_display_entities(chain, tolerance)
+            .map_err(|e| format!("chain {reference_name:?}: {e}"))?;
         let own_scope = self.ensure_xrecord_undo_scope("Stage parametric chain");
         let handles = self.add_entities(entities);
         for handle in &handles {
@@ -3940,8 +3933,8 @@ pub(in crate::app) fn resolve_plugin_class_binding(
 }
 
 /// Resolve the design record the binding links (API v14 core): NOD root
-/// first, then one sub-dictionary level (the civil lane keeps its CVIFC
-/// records under one) — the identity stamp names the record, never its
+/// first, then one sub-dictionary level (a plugin keeps its records under
+/// one) — the identity stamp names the record, never its
 /// path, so the resolver searches rather than invents a layout. Returns the
 /// dictionary path (usable by the XRecord update) and the entries.
 pub(in crate::app) fn find_design_record_entries(
@@ -5242,25 +5235,25 @@ mod tests {
 
         // Create seeds the namespace: the dictionary chain is auto-created and
         // reading returns the entries verbatim.
-        let alpha = host.create_xrecord(&["CVIFC"], "alpha", entries()).unwrap();
+        let alpha = host.create_xrecord(&["PLUGIN"], "alpha", entries()).unwrap();
         assert!(!alpha.is_null());
-        assert_eq!(host.read_xrecord(&["CVIFC"], "alpha").unwrap(), entries());
+        assert_eq!(host.read_xrecord(&["PLUGIN"], "alpha").unwrap(), entries());
         // Dictionary lookup is case-insensitive, both for the path …
-        assert_eq!(host.read_xrecord(&["cvifc"], "alpha").unwrap(), entries());
-        // … and re-creating an existing name is refused without any change.
+assert_eq!(host.read_xrecord(&["plugin"], "alpha").unwrap(), entries());
+        // â€¦ and re-creating an existing name is refused without any change.
         assert!(host
-            .create_xrecord(&["cvifc"], "ALPHA", entries())
+            .create_xrecord(&["plugin"], "ALPHA", entries())
             .unwrap_err()
             .contains("already exists"));
 
-        // Namespace reuse is idempotent: the root still holds one CVIFC entry.
-        let beta = host.create_xrecord(&["CVIFC"], "beta", entries()).unwrap();
+        // Namespace reuse is idempotent: the root still holds one PLUGIN entry.
+        let beta = host.create_xrecord(&["PLUGIN"], "beta", entries()).unwrap();
         let root = host.document().header.named_objects_dict_handle;
         let cvifc_entries = match host.document().objects.get(&root) {
             Some(codec::objects::ObjectType::Dictionary(dictionary)) => dictionary
                 .entries
                 .iter()
-                .filter(|(key, _)| key.eq_ignore_ascii_case("CVIFC"))
+                .filter(|(key, _)| key.eq_ignore_ascii_case("PLUGIN"))
                 .count(),
             _ => 0,
         };
@@ -5268,14 +5261,14 @@ mod tests {
 
         // Listing names only the keys that address XRecords, in dictionary
         // order; a nested dictionary is not an XRecord.
-        host.create_xrecord(&["CVIFC", "LAYOUTS"], "nested", entries())
+        host.create_xrecord(&["PLUGIN", "LAYOUTS"], "nested", entries())
             .unwrap();
         assert_eq!(
-            host.list_xrecords(&["CVIFC"]).unwrap(),
+            host.list_xrecords(&["PLUGIN"]).unwrap(),
             vec!["alpha".to_owned(), "beta".to_owned()]
         );
         assert_eq!(
-            host.list_xrecords(&["CVIFC", "LAYOUTS"]).unwrap(),
+            host.list_xrecords(&["PLUGIN", "LAYOUTS"]).unwrap(),
             vec!["nested".to_owned()]
         );
         // The root dictionary holds non-XRecord entries (ACAD_LAYOUT et al.);
@@ -5287,14 +5280,14 @@ mod tests {
 
         // Update refuses on a missing name and never creates anything.
         assert!(host
-            .update_xrecord(&["CVIFC"], "gamma", entries())
+            .update_xrecord(&["PLUGIN"], "gamma", entries())
             .unwrap_err()
             .contains("does not exist"));
         // Case-insensitive resolution finds the stored ALPHA and replaces its
         // entries atomically; the handle is stable.
         assert_eq!(
             host.update_xrecord(
-                &["CVIFC"],
+                &["PLUGIN"],
                 "ALPHA",
                 vec![codec::objects::XRecordEntry::string(1, "v2")]
             )
@@ -5302,7 +5295,7 @@ mod tests {
             alpha
         );
         assert_eq!(
-            host.read_xrecord(&["CVIFC"], "alpha").unwrap(),
+            host.read_xrecord(&["PLUGIN"], "alpha").unwrap(),
             vec![codec::objects::XRecordEntry::string(1, "v2")]
         );
 
@@ -5310,7 +5303,7 @@ mod tests {
         // group codes refuse (5 and 105 are the object handle codes).
         assert!(host
             .create_xrecord(
-                &["CVIFC"],
+                &["PLUGIN"],
                 "gamma",
                 vec![codec::objects::XRecordEntry::int16(5, 1)]
             )
@@ -5318,7 +5311,7 @@ mod tests {
             .contains("reserved"));
         assert!(host
             .create_xrecord(
-                &["CVIFC"],
+                &["PLUGIN"],
                 "gamma",
                 vec![codec::objects::XRecordEntry::int16(400, 1)]
             )
@@ -5326,21 +5319,21 @@ mod tests {
             .contains("out of range"));
         assert!(host
             .update_xrecord(
-                &["CVIFC"],
+                &["PLUGIN"],
                 "alpha",
                 vec![codec::objects::XRecordEntry::int16(105, 1)]
             )
             .is_err());
         assert_eq!(
-            host.read_xrecord(&["CVIFC"], "alpha").unwrap(),
+            host.read_xrecord(&["PLUGIN"], "alpha").unwrap(),
             vec![codec::objects::XRecordEntry::string(1, "v2")]
         );
         // Dictionary and record names are symbol names.
-        assert!(host.create_xrecord(&["CVIFC"], "  ", entries()).is_err());
+        assert!(host.create_xrecord(&["PLUGIN"], "  ", entries()).is_err());
         assert!(host
-            .create_xrecord(&["CVIFC", "A|B"], "gamma", entries())
+            .create_xrecord(&["PLUGIN", "A|B"], "gamma", entries())
             .is_err());
-        assert!(host.create_xrecord(&["CVIFC"], "a<b", entries()).is_err());
+        assert!(host.create_xrecord(&["PLUGIN"], "a<b", entries()).is_err());
 
         // Reads distinguish a missing dictionary, a missing name and a name
         // that addresses another object kind.
@@ -5349,27 +5342,27 @@ mod tests {
             .unwrap_err()
             .contains("does not exist"));
         assert!(host
-            .read_xrecord(&["CVIFC", "LAYOUTS"], "alpha")
+            .read_xrecord(&["PLUGIN", "LAYOUTS"], "alpha")
             .unwrap_err()
             .contains("does not exist"));
         assert!(host
-            .delete_xrecord(&["CVIFC"], "LAYOUTS")
+            .delete_xrecord(&["PLUGIN"], "LAYOUTS")
             .unwrap_err()
             .contains("not an XRecord"));
 
         // Delete removes exactly the named record and returns its content.
-        let removed = host.delete_xrecord(&["CVIFC"], "beta").unwrap();
+        let removed = host.delete_xrecord(&["PLUGIN"], "beta").unwrap();
         assert_eq!(removed.handle, beta);
         assert_eq!(removed.entries, entries());
         assert_eq!(
-            host.list_xrecords(&["CVIFC"]).unwrap(),
+            host.list_xrecords(&["PLUGIN"]).unwrap(),
             vec!["alpha".to_owned()]
         );
         assert!(host
-            .read_xrecord(&["CVIFC"], "beta")
+            .read_xrecord(&["PLUGIN"], "beta")
             .unwrap_err()
             .contains("does not exist"));
-        assert!(host.delete_xrecord(&["CVIFC"], "beta").is_err());
+        assert!(host.delete_xrecord(&["PLUGIN"], "beta").is_err());
     }
 
     #[test]
@@ -5387,21 +5380,21 @@ mod tests {
         {
             let mut host = HostSession::new(&mut app, 0);
             alpha = host
-                .create_xrecord(&["CVIFC"], "alpha", original_entries())
+                .create_xrecord(&["PLUGIN"], "alpha", original_entries())
                 .unwrap();
             beta = host
-                .create_xrecord(&["CVIFC"], "beta", original_entries())
+                .create_xrecord(&["PLUGIN"], "beta", original_entries())
                 .unwrap();
             // Refusals record no undo step.
             assert!(host
-                .create_xrecord(&["CVIFC"], "alpha", original_entries())
+                .create_xrecord(&["PLUGIN"], "alpha", original_entries())
                 .is_err());
             assert!(host
-                .update_xrecord(&["CVIFC"], "gamma", original_entries())
+                .update_xrecord(&["PLUGIN"], "gamma", original_entries())
                 .is_err());
-            host.update_xrecord(&["CVIFC"], "alpha", changed_entries())
+            host.update_xrecord(&["PLUGIN"], "alpha", changed_entries())
                 .unwrap();
-            let removed = host.delete_xrecord(&["CVIFC"], "beta").unwrap();
+            let removed = host.delete_xrecord(&["PLUGIN"], "beta").unwrap();
             assert_eq!(removed.handle, beta);
         }
         app.finish_pending_history(0);
@@ -5447,7 +5440,7 @@ mod tests {
         let document = &app.tabs[0].scene.document;
         assert!(xrecord(document, alpha).is_none());
         assert!(
-            !has_dictionary_entry(document, "CVIFC"),
+            !has_dictionary_entry(document, "PLUGIN"),
             "undoing the first create removed the auto-created dictionary"
         );
         // Redo re-applies the whole ladder.
@@ -5476,26 +5469,26 @@ mod tests {
         let (alpha, nested, entity);
         {
             let mut host = HostSession::new(&mut app, 0);
-            host.push_undo("CVI: import");
+            host.push_undo("PLUGIN: import");
             alpha = host
-                .create_xrecord(&["CVIFC"], "alpha", original_entries())
+                .create_xrecord(&["PLUGIN"], "alpha", original_entries())
                 .unwrap();
             nested = host
-                .create_xrecord(&["CVIFC", "LAYOUTS"], "nested", original_entries())
+                .create_xrecord(&["PLUGIN", "LAYOUTS"], "nested", original_entries())
                 .unwrap();
             // A refusal inside the scope records nothing at all.
             assert!(host
-                .create_xrecord(&["CVIFC"], "ALPHA", original_entries())
+                .create_xrecord(&["PLUGIN"], "ALPHA", original_entries())
                 .is_err());
             assert_eq!(
-                host.update_xrecord(&["CVIFC"], "alpha", changed_entries())
+                host.update_xrecord(&["PLUGIN"], "alpha", changed_entries())
                     .unwrap(),
                 alpha
             );
             let beta = host
-                .create_xrecord(&["CVIFC"], "beta", original_entries())
+                .create_xrecord(&["PLUGIN"], "beta", original_entries())
                 .unwrap();
-            let removed = host.delete_xrecord(&["CVIFC"], "beta").unwrap();
+            let removed = host.delete_xrecord(&["PLUGIN"], "beta").unwrap();
             assert_eq!(removed.handle, beta);
             // Entity writes join the same scope and land in the same step.
             entity = host.add_entity(EntityType::Point(Point::at(codec::types::Vector3::new(
@@ -5505,7 +5498,7 @@ mod tests {
         app.finish_pending_history(0);
         // The whole plugin operation is ONE undo step under the plugin's label.
         assert_eq!(app.tabs[0].history.undo_stack.len(), 1);
-        assert_eq!(app.tabs[0].history.undo_stack[0].label(), "CVI: import");
+        assert_eq!(app.tabs[0].history.undo_stack[0].label(), "PLUGIN: import");
 
         let xrecord = |doc: &Document, handle: Handle| -> Option<codec::objects::XRecord> {
             match doc.objects.get(&handle) {
@@ -5530,7 +5523,7 @@ mod tests {
         assert!(xrecord(document, alpha).is_none());
         assert!(xrecord(document, nested).is_none());
         assert!(
-            !has_dictionary_entry(document, "CVIFC"),
+            !has_dictionary_entry(document, "PLUGIN"),
             "undoing the operation removed its auto-created dictionary namespace"
         );
         app.redo_steps(1);
@@ -5543,7 +5536,7 @@ mod tests {
         assert_eq!(alpha_record.entries, changed_entries());
         assert!(xrecord(document, nested).is_some());
         assert!(
-            has_dictionary_entry(document, "CVIFC"),
+            has_dictionary_entry(document, "PLUGIN"),
             "redoing the operation re-seeded its namespace"
         );
     }
@@ -5566,12 +5559,12 @@ mod tests {
         // writers preferred stale raw bytes over the typed entries, the loaded
         // record would still read "stale".
         host.create_xrecord(
-            &["CVIFC", "RECORDS"],
+            &["PLUGIN", "RECORDS"],
             "alpha",
             vec![codec::objects::XRecordEntry::string(1, "stale")],
         )
         .unwrap();
-        host.update_xrecord(&["CVIFC", "RECORDS"], "alpha", entries())
+        host.update_xrecord(&["PLUGIN", "RECORDS"], "alpha", entries())
             .unwrap();
 
         let find_xrecord =
@@ -5602,7 +5595,7 @@ mod tests {
             codec::DwgWriter::write_to_vec(host.document()).unwrap(),
         )
         .unwrap();
-        let reloaded = find_xrecord(&dwg, &["CVIFC", "RECORDS"], "alpha")
+        let reloaded = find_xrecord(&dwg, &["PLUGIN", "RECORDS"], "alpha")
             .expect("XRecord in the reloaded DWG");
         assert_eq!(reloaded.entries, entries());
 
@@ -5613,7 +5606,7 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        let reloaded = find_xrecord(&dxf, &["CVIFC", "RECORDS"], "alpha")
+        let reloaded = find_xrecord(&dxf, &["PLUGIN", "RECORDS"], "alpha")
             .expect("XRecord in the reloaded DXF");
         assert_eq!(reloaded.entries, entries());
     }
@@ -14655,7 +14648,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         // Inside a plugin-opened push_undo scope the designation joins the
         // scope: an entity write plus two markings is ONE step under the
         // plugin's label.
-        host.push_undo("CVI: refresh");
+        host.push_undo("PLUGIN: refresh");
         let preview = host.add_entity(EntityType::Point(Point::at(codec::types::Vector3::new(
             3.0, 0.0, 0.0,
         ))));
@@ -14664,7 +14657,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         drop(host);
         app.finish_pending_history(0);
         assert_eq!(app.tabs[0].history.undo_stack.len(), 3);
-        assert_eq!(app.tabs[0].history.undo_stack[2].label(), "CVI: refresh");
+        assert_eq!(app.tabs[0].history.undo_stack[2].label(), "PLUGIN: refresh");
 
         // Undoing the plugin operation reverts it whole.
         app.undo_steps(1);
@@ -14758,7 +14751,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
         // The plugin erase path removes a designated entity inside a scope:
         // entity and set entry leave together.
-        host.push_undo("CVI: replace the underlying model");
+        host.push_undo("PLUGIN: replace the underlying model");
         host.remove_entity(handle);
         drop(host);
         app.finish_pending_history(0);
@@ -15698,28 +15691,26 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         assert_eq!(host.app.show_grid, !initial_grid);
     }
 
-    /// The demo profile chain the commission pins, expressed against the
-    /// API v14 wire types (rebuilt here so the session tests stay
-    /// independent of the engine module's own fixtures).
+    /// The session tests' profile chain: one ramp-declared parabola
+    /// (slope 0 -> 0.1 over the run), expressed against the API v14 wire
+    /// types (rebuilt here so the session tests stay independent of the
+    /// engine module's own fixtures).
     fn staging_profile_chain() -> ocs_plugin_api::host::ParametricChain {
         ocs_plugin_api::host::ParametricChain {
             plane: ocs_plugin_api::host::ParametricPlane::Profile,
             segments: vec![ocs_plugin_api::host::ParametricSegment {
-                species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                    ocs_plugin_api::host::VerticalSegmentSpecies::ParabolicArc,
-                ),
+                def: ocs_plugin_api::host::CurveSegmentDef {
+                    length: 80.0,
+                    ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                        degree: 1,
+                        coeffs: [0.0, 0.1, 0.0, 0.0],
+                    },
+                    cross_slope: None,
+                },
                 start_point: [0.0, 100.0],
                 start_direction: 0.0,
-                start_gradient: 0.0,
-                end_gradient: 0.1,
-                length: 80.0,
-                start_radius: 800.0,
-                end_radius: 0.0,
-                end_curvature: 0.0,
-                bank_change: 0.0,
-                gravity_height: 0.0,
             }],
-            layer: "CVI_PROFILE".to_string(),
+            layer: "PLUGIN_PROFILE".to_string(),
         }
     }
 
@@ -15727,21 +15718,20 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         ocs_plugin_api::host::ParametricChain {
             plane: ocs_plugin_api::host::ParametricPlane::Plan,
             segments: vec![ocs_plugin_api::host::ParametricSegment {
-                species: ocs_plugin_api::host::ParametricSpecies::Horizontal(
-                    ocs_plugin_api::host::HorizontalSegmentSpecies::Clothoid,
-                ),
+                def: ocs_plugin_api::host::CurveSegmentDef {
+                    // Curvature ramp 0 -> -1/300 over the arc length (the
+                    // record's straight-to-circle spiral restated as data).
+                    length: 60.0,
+                    ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                        degree: 1,
+                        coeffs: [0.0, -1.0 / 300.0, 0.0, 0.0],
+                    },
+                    cross_slope: None,
+                },
                 start_point: [0.0, 0.0],
                 start_direction: 0.0,
-                start_gradient: 0.0,
-                end_gradient: 0.0,
-                length: 60.0,
-                start_radius: 0.0,
-                end_radius: -300.0,
-                end_curvature: 0.0,
-                bank_change: 0.0,
-                gravity_height: 0.0,
             }],
-            layer: "CVI_DISPLAY".to_string(),
+            layer: "PLUGIN_DISPLAY".to_string(),
         }
     }
 
@@ -15798,7 +15788,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         assert!(host.stage_parametric_chain("bad", &broken, 0.0).is_err());
         assert!(host.stage_parametric_chain("bad", &broken, -1.0).is_err());
         // Broken declared data refuses too.
-        broken.segments[0].length = -1.0;
+        broken.segments[0].def.length = -1.0;
         assert!(host.stage_parametric_chain("bad", &broken, 1e-3).is_err());
         assert_eq!(host.document().entities().count(), 0);
         assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
@@ -15809,14 +15799,14 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
     /// Becomes the owner plugin in these tests: the in-process sink installs
     /// the thread-local liveness the visibility predicate consults in tests.
     fn install_class_owner() {
-        crate::plugin::grip_points::install_in_process_sink("CVIFC", |_host, _event| {
+        crate::plugin::grip_points::install_in_process_sink("PLUGIN", |_host, _event| {
             ocs_plugin_api::host::CustomGripResponse::default()
         });
     }
 
     fn traverse_class() -> ocs_plugin_api::host::PluginClassDeclaration {
         ocs_plugin_api::host::PluginClassDeclaration {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             grip_schema: vec![ocs_plugin_api::host::PluginGripSchemaEntry {
                 grip_id: 1,
@@ -15829,14 +15819,14 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
 
     fn traverse_instance() -> ocs_plugin_api::host::PluginClassInstance {
         ocs_plugin_api::host::PluginClassInstance {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             design: ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
                 staging_profile_chain(),
             ),
             tolerance: 1e-3,
-            layer: "CVI_PROFILE".to_string(),
-            design_record: "CVIFC_ALIGN_DISPLAY".to_string(),
+            layer: "PLUGIN_PROFILE".to_string(),
+            design_record: "PLUGIN_ALIGN_DISPLAY".to_string(),
         }
     }
 
@@ -15849,33 +15839,33 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         assert!(not_owner.contains("not a loaded, alive plugin"), "got: {not_owner}");
         install_class_owner();
         // Register, then re-register identical: idempotent, still one entry.
-        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
-        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
+        assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
         assert_eq!(host.app.tabs[0].plugin_classes.total(), 1);
         // A different schema refuses without touching the live class.
         let mut bumped = traverse_class();
         bumped.schema_version = 5;
-        let err = host.register_plugin_class("CVIFC", &bumped).unwrap_err();
+        let err = host.register_plugin_class("PLUGIN", &bumped).unwrap_err();
         assert!(err.contains("different schema"), "got: {err}");
         assert_eq!(
-            host.app.tabs[0].plugin_classes.find("CVIFC", "CVI_ALIGN_DISPLAY").expect("live entry").schema_version,
+            host.app.tabs[0].plugin_classes.find("PLUGIN", "PLUGIN_ALIGN_DISPLAY").expect("live entry").schema_version,
             4
         );
         // Malformed declarations refuse: empty identity, unnamed grip
         // parameter, duplicate grip ids.
         let mut empty = traverse_class();
         empty.class_id = String::new();
-        assert!(host.register_plugin_class("CVIFC", &empty).is_err());
+        assert!(host.register_plugin_class("PLUGIN", &empty).is_err());
         let mut unnamed = traverse_class();
         unnamed.grip_schema[0].param_name = String::new();
-        assert!(host.register_plugin_class("CVIFC", &unnamed).is_err());
+        assert!(host.register_plugin_class("PLUGIN", &unnamed).is_err());
         let mut dup = traverse_class();
         dup.grip_schema.push(ocs_plugin_api::host::PluginGripSchemaEntry {
             grip_id: 1,
             param_name: "other".to_string(),
             drives: None,
         });
-        assert!(host.register_plugin_class("CVIFC", &dup).is_err());
+        assert!(host.register_plugin_class("PLUGIN", &dup).is_err());
         assert_eq!(host.app.tabs[0].plugin_classes.total(), 1);
     }
 
@@ -15889,13 +15879,13 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         install_class_owner();
         {
             let mut host = HostSession::new(&mut app, 0);
-            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
         }
         // Session B: a DIFFERENT HostSession over the same tab (the IPC
         // server's per-request reality) stages the instance.
         let mut host = HostSession::new(&mut app, 0);
         let handles = host
-            .stage_plugin_class_instance("CVIFC", &traverse_instance())
+            .stage_plugin_class_instance("PLUGIN", &traverse_instance())
             .expect("the class outlives its declaring session");
         assert!(!handles.is_empty());
         assert!(host.app.tabs[0].scene.is_reference_only(handles[0]));
@@ -15907,16 +15897,16 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         app.tabs[0].is_start = false;
         install_class_owner();
         let mut host = HostSession::new(&mut app, 0);
-        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
         // Another alive plugin sees the class but cannot stage it.
-        crate::plugin::grip_points::install_in_process_sink("CVIB", |_host, _event| {
+        crate::plugin::grip_points::install_in_process_sink("PLUGIN_RIVAL", |_host, _event| {
             ocs_plugin_api::host::CustomGripResponse::default()
         });
         let err = host
-            .stage_plugin_class_instance("CVIB", &traverse_instance())
+            .stage_plugin_class_instance("PLUGIN_RIVAL", &traverse_instance())
             .unwrap_err();
         assert!(err.contains("owned by plugin"), "got: {err}");
-        assert!(err.contains("CVIFC"), "got: {err}");
+        assert!(err.contains("PLUGIN"), "got: {err}");
         assert_eq!(host.document().entities().count(), 0);
     }
 
@@ -15929,9 +15919,9 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let handles;
         {
             let mut host = HostSession::new(&mut app, 0);
-            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
             handles = host
-                .stage_plugin_class_instance("CVIFC", &instance)
+                .stage_plugin_class_instance("PLUGIN", &instance)
                 .expect("the class instance stages");
             assert!(!handles.is_empty());
             for handle in &handles {
@@ -15939,7 +15929,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 // schema version + the record linkage as its values, the
                 // APPID auto-registered so the stamp survives the file.
                 let stamped = host
-                    .read_record(*handle, "CVI_ALIGN_DISPLAY")
+                    .read_record(*handle, "PLUGIN_ALIGN_DISPLAY")
                     .expect("the class identity stamp");
                 assert_eq!(stamped.values.len(), 2);
                 let ocs_plugin_api::host::codec::xdata::XDataValue::Integer32(version) =
@@ -15953,8 +15943,8 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 else {
                     panic!("the stamp carries the design record linkage");
                 };
-                assert_eq!(record, "CVIFC_ALIGN_DISPLAY");
-                assert!(host.document().app_ids.contains("CVI_ALIGN_DISPLAY"));
+                assert_eq!(record, "PLUGIN_ALIGN_DISPLAY");
+                assert!(host.document().app_ids.contains("PLUGIN_ALIGN_DISPLAY"));
                 assert!(
                     host.app.tabs[0].scene.is_reference_only(*handle),
                     "staged class display must be reference-only"
@@ -15984,9 +15974,9 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let handles;
         {
             let mut host = HostSession::new(&mut app, 0);
-            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
             handles = host
-                .stage_plugin_class_instance("CVIFC", &traverse_instance())
+                .stage_plugin_class_instance("PLUGIN", &traverse_instance())
                 .expect("the class instance stages");
         }
         let read_stamp = |document: &codec::Document, handle: codec::Handle| {
@@ -15996,7 +15986,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             entity
                 .common()
                 .extended_data
-                .get_record("CVI_ALIGN_DISPLAY")
+                .get_record("PLUGIN_ALIGN_DISPLAY")
                 .unwrap_or_else(|| panic!("the class identity stamp was lost"))
                 .values
                 .clone()
@@ -16034,25 +16024,25 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         app.tabs[0].is_start = false;
         install_class_owner();
         let mut host = HostSession::new(&mut app, 0);
-        assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+        assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
         let epoch_before = host.app.tabs[0].scene.geometry_epoch;
         // Unregistered class.
         let mut ghost = traverse_instance();
         ghost.class_id = "GHOST".to_owned();
-        assert!(host.stage_plugin_class_instance("CVIFC", &ghost).is_err());
+        assert!(host.stage_plugin_class_instance("PLUGIN", &ghost).is_err());
         // Schema version mismatch.
         let mut mismatch = traverse_instance();
         mismatch.schema_version = 5;
-        assert!(host.stage_plugin_class_instance("CVIFC", &mismatch).is_err());
+        assert!(host.stage_plugin_class_instance("PLUGIN", &mismatch).is_err());
         // Broken design parameter (the chain audit refuses at the contract).
         let mut broken = traverse_instance();
         let ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(chain) =
             &mut broken.design;
-        chain.segments[0].end_gradient = f64::NAN;
+        chain.segments[0].start_direction = f64::NAN;
         broken.tolerance = 1e-3;
-        assert!(host.stage_plugin_class_instance("CVIFC", &broken).is_err());
+        assert!(host.stage_plugin_class_instance("PLUGIN", &broken).is_err());
         // Broken tolerance.
-        assert!(host.stage_plugin_class_instance("CVIFC", &traverse_instance_for(0.0)).is_err());
+        assert!(host.stage_plugin_class_instance("PLUGIN", &traverse_instance_for(0.0)).is_err());
         assert_eq!(host.document().entities().count(), 0);
         assert_eq!(host.app.tabs[0].scene.geometry_epoch, epoch_before);
     }
@@ -16092,7 +16082,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let profile = staging_profile_chain();
         {
             let mut host = HostSession::new(&mut app, 0);
-            host.push_undo("CVI: refresh alignment display");
+            host.push_undo("PLUGIN: refresh alignment display");
             let _ = host.stage_parametric_chain("plan", &plan, 1e-3).unwrap();
             let _ = host.stage_parametric_chain("profile", &profile, 1e-3).unwrap();
         }
@@ -16104,62 +16094,55 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         );
     }
 
-    /// The grip-edit restage fixture (the domain crest in wire terms):
-    /// [CONSTANTGRADIENT g0=0.01 L=100 -> PARABOLICARC g0=0.01 g1=0.06
-    /// L=200 (R=4000) -> CONSTANTGRADIENT g0=0.06 L=80 at the exact end
-    /// (300, 8.0)], entering at (0, 0). Every segment stages the count-
-    /// stable exact carrier (line, degree-2 spline, line).
+    /// The grip-edit restage fixture (the domain crest as ramp data):
+    /// [constant slope 0.01 over 100 -> slope-linear 0.01 to 0.06 over
+    /// 200 -> constant slope 0.06 over 80 at the exact end (300, 8.0)],
+    /// entering at (0, 0). Every segment stages the count-stable exact
+    /// carrier (line, degree-2 spline, line).
     fn crest_profile_chain() -> ocs_plugin_api::host::ParametricChain {
         ocs_plugin_api::host::ParametricChain {
             plane: ocs_plugin_api::host::ParametricPlane::Profile,
             segments: vec![
                 ocs_plugin_api::host::ParametricSegment {
-                    species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                        ocs_plugin_api::host::VerticalSegmentSpecies::ConstantGradient,
-                    ),
+                    def: ocs_plugin_api::host::CurveSegmentDef {
+                        length: 100.0,
+                        ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                            degree: 0,
+                            coeffs: [0.01, 0.0, 0.0, 0.0],
+                        },
+                        cross_slope: None,
+                    },
                     start_point: [0.0, 0.0],
-                    start_direction: 0.0,
-                    start_gradient: 0.01,
-                    end_gradient: 0.01,
-                    length: 100.0,
-                    start_radius: 0.0,
-                    end_radius: 0.0,
-                    end_curvature: 0.0,
-                    bank_change: 0.0,
-                    gravity_height: 0.0,
+                    start_direction: 0.01f64.atan(),
                 },
                 ocs_plugin_api::host::ParametricSegment {
-                    species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                        ocs_plugin_api::host::VerticalSegmentSpecies::ParabolicArc,
-                    ),
+                    def: ocs_plugin_api::host::CurveSegmentDef {
+                        // Slope-linear ramp 0.01 -> 0.06 (the declared
+                        // crest restated as data).
+                        length: 200.0,
+                        ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                            degree: 1,
+                            coeffs: [0.01, 0.05, 0.0, 0.0],
+                        },
+                        cross_slope: None,
+                    },
                     start_point: [100.0, 1.0],
                     start_direction: 0.01f64.atan(),
-                    start_gradient: 0.01,
-                    end_gradient: 0.06,
-                    length: 200.0,
-                    start_radius: 4000.0,
-                    end_radius: 0.0,
-                    end_curvature: 0.0,
-                    bank_change: 0.0,
-                    gravity_height: 0.0,
                 },
                 ocs_plugin_api::host::ParametricSegment {
-                    species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                        ocs_plugin_api::host::VerticalSegmentSpecies::ConstantGradient,
-                    ),
+                    def: ocs_plugin_api::host::CurveSegmentDef {
+                        length: 80.0,
+                        ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                            degree: 0,
+                            coeffs: [0.06, 0.0, 0.0, 0.0],
+                        },
+                        cross_slope: None,
+                    },
                     start_point: [300.0, 8.0],
                     start_direction: 0.06f64.atan(),
-                    start_gradient: 0.06,
-                    end_gradient: 0.06,
-                    length: 80.0,
-                    start_radius: 0.0,
-                    end_radius: 0.0,
-                    end_curvature: 0.0,
-                    bank_change: 0.0,
-                    gravity_height: 0.0,
                 },
             ],
-            layer: "CVI_PROFILE".to_string(),
+            layer: "PLUGIN_PROFILE".to_string(),
         }
     }
 
@@ -16180,14 +16163,14 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         let handles;
         {
             let mut host = HostSession::new(&mut app, 0);
-            assert!(host.register_plugin_class("CVIFC", &traverse_class()).is_ok());
+            assert!(host.register_plugin_class("PLUGIN", &traverse_class()).is_ok());
             let mut instance = traverse_instance();
             instance.design = ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
                 crest_profile_chain(),
             );
             instance.tolerance = 1e-3;
             handles = host
-                .stage_plugin_class_instance("CVIFC", &instance)
+                .stage_plugin_class_instance("PLUGIN", &instance)
                 .expect("the crest instance stages");
             assert_eq!(handles.len(), 3, "three exact carriers (line, spline, line)");
             let EntityType::Spline(spline) = host.document().get_entity(handles[1]).expect("live")
@@ -16203,12 +16186,14 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         {
             let mut host = HostSession::new(&mut app, 0);
             // THE DRAG (host-local, the grip-edit policy): the crest's end
-            // gradient
-            // 0.06 -> 0.09 (R = 2500); the joint re-derived from the
-            // engine's sampling and the honest upstream re-declared.
+            // gradient 0.06 -> 0.09 — the ramp's end value revised; the
+            // joint re-derived from the engine's sampling and the honest
+            // upstream re-declared.
             let mut edited = crest_profile_chain();
-            edited.segments[1].end_gradient = 0.09;
-            edited.segments[1].start_radius = edited.segments[1].length / (0.09 - 0.01);
+            edited.segments[1].def.ramp = ocs_plugin_api::host::Ramp::Polynomial {
+                degree: 1,
+                coeffs: [0.01, 0.08, 0.0, 0.0],
+            };
             let front = ocs_plugin_api::host::ParametricChain {
                 plane: ocs_plugin_api::host::ParametricPlane::Profile,
                 segments: edited.segments[..2].to_vec(),
@@ -16221,9 +16206,13 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             assert!((joint.point[1] - 11.0).abs() < 1e-9, "the crest moved to 11.0");
             let joint_gradient = joint.direction[1] / joint.direction[0];
             edited.segments[2].start_point = joint.point;
-            edited.segments[2].start_gradient = joint_gradient;
-            edited.segments[2].end_gradient = joint_gradient;
             edited.segments[2].start_direction = joint_gradient.atan();
+            // The tail's slope law restates the propagated joint slope (the
+            // ramp data in place of the old gradient pair).
+            edited.segments[2].def.ramp = ocs_plugin_api::host::Ramp::Polynomial {
+                degree: 0,
+                coeffs: [joint_gradient, 0.0, 0.0, 0.0],
+            };
 
             // Re-derive the edited design's entity set: same carriers, same
             // count, in the same order (the staging builds per segment).
@@ -16265,7 +16254,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                     _ => panic!("the re-derived set keeps the staged carrier shape"),
                 }
             }
-            host.update_entities_transaction("CVIFC: grip edit", restaged)
+            host.update_entities_transaction("PLUGIN: grip edit", restaged)
                 .expect("the restage applies over the same handles");
         }
         app.finish_pending_history(0);
@@ -16303,7 +16292,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                     host.app.tabs[0].scene.is_reference_only(*handle),
                     "the designated display set stays reference-only"
                 );
-                let stamped = host.read_record(*handle, "CVI_ALIGN_DISPLAY").expect("the stamp");
+                let stamped = host.read_record(*handle, "PLUGIN_ALIGN_DISPLAY").expect("the stamp");
                 assert_eq!(stamped.values.len(), 2, "the identity stamp survives the restage");
             }
         }
@@ -16328,7 +16317,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                     "the designations survive the undo round trip"
                 );
                 assert!(
-                    host.read_record(*handle, "CVI_ALIGN_DISPLAY").is_some(),
+                    host.read_record(*handle, "PLUGIN_ALIGN_DISPLAY").is_some(),
                     "the identity stamp survives the undo round trip"
                 );
             }
@@ -16366,20 +16355,20 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                     editable: false,
                 },
             ];
-            host.register_plugin_class("CVIFC", &declaration)
+            host.register_plugin_class("PLUGIN", &declaration)
                 .expect("the parameter schema registers");
             let mut instance = traverse_instance();
             instance.design = ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
                 crest_profile_chain(),
             );
             handles = host
-                .stage_plugin_class_instance("CVIFC", &instance)
+                .stage_plugin_class_instance("PLUGIN", &instance)
                 .expect("the instance stages");
             // The declared (name, value) pair layout: alternating String
             // name / value entries — the layout the declaration owns.
             host.create_xrecord(
-                &["CVIFC"],
-                "CVIFC_ALIGN_DISPLAY",
+                &["PLUGIN"],
+                "PLUGIN_ALIGN_DISPLAY",
                 vec![
                     codec::objects::XRecordEntry::string(1, "peak_gradient"),
                     codec::objects::XRecordEntry::new(
@@ -16424,7 +16413,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             // The record's OTHER pairs (and the plugin's own layout) stayed
             // exactly as the plugin laid them.
             let entries = host
-                .read_xrecord(&["CVIFC"], "CVIFC_ALIGN_DISPLAY")
+                .read_xrecord(&["PLUGIN"], "PLUGIN_ALIGN_DISPLAY")
                 .expect("the record");
             assert_eq!(entries.len(), 6);
             assert_eq!(format!("{:?}", entries[3].value), "Int32(3)");
@@ -16464,7 +16453,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 "refusals record nothing"
             );
             let entries_after = host
-                .read_xrecord(&["CVIFC"], "CVIFC_ALIGN_DISPLAY")
+                .read_xrecord(&["PLUGIN"], "PLUGIN_ALIGN_DISPLAY")
                 .expect("the record");
             assert_eq!(entries_after.len(), entries.len(), "refusals changed nothing");
             for (before, after) in entries.iter().zip(entries_after.iter()) {
@@ -16491,20 +16480,20 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 value_kind: ocs_plugin_api::host::PluginClassParameterKind::Real,
                 editable: true,
             }];
-            host.register_plugin_class("CVIFC", &declaration)
+            host.register_plugin_class("PLUGIN", &declaration)
                 .expect("the parameter schema registers");
             handle = host.add_entity(EntityType::Point(Point::at(codec::types::Vector3::new(
                 12.0, 3.0, 0.0,
             ))));
-            let mut stamp = codec::xdata::ExtendedDataRecord::new("CVI_ALIGN_DISPLAY");
+            let mut stamp = codec::xdata::ExtendedDataRecord::new("PLUGIN_ALIGN_DISPLAY");
             stamp.add_value(codec::xdata::XDataValue::Integer32(4));
             stamp.add_value(codec::xdata::XDataValue::String(
-                "CVIFC_ALIGN_DISPLAY".to_string(),
+                "PLUGIN_ALIGN_DISPLAY".to_string(),
             ));
             assert!(host.write_record(handle, stamp), "the stamp rides");
             host.create_xrecord(
-                &["CVIFC"],
-                "CVIFC_ALIGN_DISPLAY",
+                &["PLUGIN"],
+                "PLUGIN_ALIGN_DISPLAY",
                 vec![
                     codec::objects::XRecordEntry::string(1, "peak_gradient"),
                     codec::objects::XRecordEntry::new(
@@ -16535,7 +16524,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
                 matches!(
                     &section.props[0].value,
                     crate::scene::model::object::PropValue::ReadOnly(source)
-                        if source.contains("CVIFC_ALIGN_DISPLAY")
+                        if source.contains("PLUGIN_ALIGN_DISPLAY")
                 ),
                 "the derived-view line points at the owning record row"
             );

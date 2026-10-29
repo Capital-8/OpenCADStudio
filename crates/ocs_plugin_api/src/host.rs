@@ -1647,19 +1647,21 @@ pub trait HostApi {
         Err("XRecord listing with entries is not supported by this host".to_owned())
     }
 
-    /// Turn a DECLARED parametric alignment chain into reference-only display
+    /// Turn a declared parametric alignment chain into reference-only display
     /// geometry (API v14, additive).
     ///
-    /// The chain carries the record layer's truth — species enum plus declared
-    /// parameters (start point/direction, radii, gradients, length) — and the
-    /// host does the evaluation math: the segment species' curvature laws
-    /// (IFC 4.3.2.0 base formulas) integrated into position/direction. Staged
-    /// carriers: an exact standard entity where one exists (LINE and
-    /// CONSTANTGRADIENT as lines, CIRCULARARC as an arc, PARABOLICARC and
-    /// CUBIC as exact single-span splines, degree 2 and 3) and bounded
-    /// LwPolyline chords within `tolerance` otherwise (CLOTHOID and the
-    /// transition blends — transcendental curves without an exact standard
-    /// carrier). Chains are audited seam-to-seam BEFORE anything is staged
+    /// The chain carries the record layer's truth — curve definitions
+    /// (length, driving-quantity ramp, cross-slope data) plus the continuity
+    /// fields (start point/direction) — and the host owns the evaluation: a
+    /// generic Gaussian-Q kernel plus the closed forms a ramp class admits.
+    /// Staged carriers: an exact standard entity where one exists GENERICALLY
+    /// (a constant-zero plan ramp stages a line, any other constant plan
+    /// ramp an arc; a profile ramp that is an at-most-quadratic polynomial
+    /// in the run stages an exact clamped Hermite spline of degree up to 3,
+    /// a constant profile slope a line) and bounded LwPolyline chords within
+    /// `tolerance` otherwise (table ramps and every other law — measured,
+    /// refined chords, never a guessed shape). Chains are audited
+    /// seam-to-seam BEFORE anything is staged
     /// (refused with the audited pair named on mismatch), and a chain that
     /// would need more display entities than
     /// [`MAX_PLUGIN_LIVE_ENTITIES`](self::MAX_PLUGIN_LIVE_ENTITIES) publishes
@@ -1681,7 +1683,7 @@ pub trait HostApi {
         Err("Parametric chain staging is not supported by this host".to_owned())
     }
 
-    /// Evaluate a DECLARED parametric chain at chain position `s` (API v14,
+    /// Evaluate a declared parametric chain at chain position `s` (API v14,
     /// additive): the same engine the staging builds from, exposed for
     /// placement and basis-curve reads. Pure evaluation — no document state,
     /// no undo, no publish. `s` is measured along the chain's declared
@@ -1763,28 +1765,32 @@ pub trait HostApi {
     }
 }
 
-/// **Parametric-chain staging types (API v14, additive).**
+/// **Parametric-chain staging types (api 14, the v2 generic shapes).**
 ///
-/// The declared-data contract for alignment chains whose species are richer
-/// than the LINE/ARC pair a DWG polyline carries exactly (IFC 4.3.2.0
-/// road/rail alignment species — IfcAlignmentHorizontalSegmentTypeEnum and
-/// IfcAlignmentVerticalSegmentTypeEnum; the IfcAlignmentCantSegmentTypeEnum
-/// family joins the same contract later). The wire carries the record layer's
-/// DECLARED truth only; the host owns the evaluation (curve integrals) and the
-/// reference-only display staging.
+/// The declared-data contract for alignment chains the host stages from
+/// ramps declared as DATA. The wire carries the record layer's declared
+/// truth only — curve definitions and continuity — and the host owns the
+/// evaluation (curve integrals), the seam audit and the reference-only
+/// display staging. There is NO host-side species vocabulary: which
+/// quantity a ramp drives per plane, which laws the record model restates
+/// with which ramp payloads, and what a segment's ends must be are the
+/// declaring plugin's own semantics; the host refuses only what it can
+/// state generically (see [`CurveSegmentDef`]). The IFC 4.3 alignment
+/// libraries that reuse this contract live in plugins (e.g. the civil-ifc
+/// crate), not in this host.
 ///
-/// Supported carriers per segment species: LINE/CONSTANTGRADIENT as `Line`,
-/// CIRCULARARC (either plane) as `Arc`, PARABOLICARC as an exact degree-2
-/// clamped spline, CUBIC as an exact degree-3 clamped spline, and the
-/// transcendental species (CLOTHOID, BLOSSCURVE, COSINECURVE, SINECURVE,
-/// HELMERTCURVE, VIENNESEBEND, vertical CLOTHOID) as LwPolyline chords within
-/// the declared tolerance. A HELIX entity is never produced: the codec's
-/// Helix is a 3D constant-pitch space spiral, and a plan clothoid is a 2D
-/// curve with linear curvature — staging one for the other would be
-/// mathematically wrong.
+/// Staged carriers: constant plan ramps as `Line`/`Arc` (exact), profile
+/// slope ramps that are at-most-quadratic polynomials in the run as exact
+/// clamped Hermite splines of degree up to 3 (const slopes as lines), and
+/// everything else as measured-deviation LwPolyline chords within the
+/// declared tolerance. A HELIX entity is never produced: the codec's
+/// Helix is a 3D constant-pitch space spiral, and a plan ramp curve is a
+/// 2D law — staging one for the other would be mathematically wrong.
 ///
-/// The plane a parametric chain lives in. A chain is single-plane; its
-/// segments' species must belong to it.
+/// The plane a parametric chain lives in. A chain is single-plane: the
+/// driving quantity reads as the plan curvature in the plan plane and as
+/// the profile slope in the profile plane (the record model's two sheets).
+///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ParametricPlane {
     /// Plan view: world (x, y) coordinates in the drawing's model plane,
@@ -1796,158 +1802,25 @@ pub enum ParametricPlane {
     Profile,
 }
 
-/// IFC 4.3.2.0 alignment segment species (API v14, additive), grouped by the
-/// segment-enum plane each value belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum ParametricSpecies {
-    /// A value of IfcAlignmentHorizontalSegmentTypeEnum (IFC4X3_ADD2).
-    Horizontal(HorizontalSegmentSpecies),
-    /// A value of IfcAlignmentVerticalSegmentTypeEnum (IFC4X3_ADD2).
-    Vertical(VerticalSegmentSpecies),
-}
-
-/// Horizontal segment species (IFC4X3_ADD2, additive-safe ordering follows
-/// the lexical enum). Exact standard carriers: LINE and CIRCULARARC.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum HorizontalSegmentSpecies {
-    /// `.LINE.`
-    Line,
-    /// `.CIRCULARARC.`
-    CircularArc,
-    /// `.BLOSSCURVE.`
-    BlossCurve,
-    /// `.CLOTHOID.`
-    Clothoid,
-    /// `.COSINECURVE.`
-    CosineCurve,
-    /// `.CUBIC.`
-    Cubic,
-    /// `.HELMERTCURVE.`
-    HelmertCurve,
-    /// `.SINECURVE.`
-    SineCurve,
-    /// `.VIENNESEBEND.`
-    VienneseBend,
-    /// A DECLARED curvature law: the segment states its normalized ramp and
-    /// the host's generic integrator executes it (no per-shape host code).
-    /// Every IFC blend species above restates exactly as one of these ramps;
-    /// the kind is the extension point for blends the host does not
-    /// hard-code (the cant family, custom blend shapes). kappa(s) =
-    /// k0 + (k1-k0) * ramp(s/L) with k0 = 1/start_radius (0 = straight
-    /// entry) and k1 = end_curvature declared DIRECTLY — a Declared blend
-    /// may end flat (k1 = 0), unlike the IFC blends, which always exit into
-    /// a circle. `end_radius` is ignored for a Declared law.
-    Declared(DeclaredKappaRamp),
-}
-
-/// The declared curvature-ramp vocabulary (the Declared species' head,
-/// executed as declared data by the host's generic Gaussian integrator):
-/// kappa(xi) = k0 + (k1-k0) * ramp(xi), xi = s/L in [0, 1]. Every entry
-/// satisfies ramp(0) = 0, ramp(1) = 1, ramp(xi) in [0, 1]. The six fixed
-/// ramps integrate to W(1) = 1/2 — a straight-to-curve transition deflects
-/// through L/(2R), the IFC lexics' own normalization; a Piecewise table's
-/// deflection is its OWN integral W(1) — only the endpoint VALUE is k1.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum DeclaredKappaRamp {
-    /// kappa(xi) = xi (the straight-to-circle ramp; the CLOTHOID shape).
-    Linear,
-    /// kappa(xi) = 3*xi^2 - 2*xi^3 (the BLOSSCURVE shape).
-    Bloss,
-    /// kappa(xi) = (1 - cos(pi*xi)) / 2 (the COSINECURVE half-wave).
-    Cosine,
-    /// kappa(xi) = xi - sin(2*pi*xi)/(2*pi) (the SINECURVE shape).
-    Sine,
-    /// The HELMERTCURVE's two quadratic halves: 2*xi^2 up to xi = 1/2,
-    /// then 1 - 2*(1-xi)^2.
-    Helmert,
-    /// The VIENNESEBEND's cubic-quintic ramp (35xi^4 - 84xi^5 + 70xi^6 -
-    /// 20xi^7): the banked-bend gravity-centre correction applies verbatim
-    /// (the declared `gravity_height` / `bank_change` fields drive it; zero
-    /// fields = no correction).
-    Viennese,
-    /// A continuous piecewise-LINEAR ramp through up to six declared knots.
-    /// `count` knots of `knots` are active (1..=6; the rest are padding):
-    /// knots[0] = (0.0, 0.0) and knots[count-1] = (1.0, 1.0) are required,
-    /// xi strictly ascending, every active ramp value finite in [0, 1].
-    /// The genuinely-custom blend primitive: the host integrates through
-    /// these knots; the shape itself is plugin-owned data.
-    Piecewise {
-        /// The active knot count.
-        count: u32,
-        /// The knot table; only the first `count` entries are the law.
-        knots: [(f64, f64); 6],
-    },
-}
-
-/// Vertical segment species (IFC4X3_ADD2). Exact standard carriers:
-/// CONSTANTGRADIENT and CIRCULARARC.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum VerticalSegmentSpecies {
-    /// `.CONSTANTGRADIENT.`
-    ConstantGradient,
-    /// `.CIRCULARARC.`
-    CircularArc,
-    /// `.PARABOLICARC.`
-    ParabolicArc,
-    /// `.CLOTHOID.`
-    Clothoid,
-    /// A DECLARED curvature law (see `DeclaredKappaRamp`): the run law is
-    /// theta(u) = theta0 + k0*u + (k1-k0)*L*W(s/L), k0 = 1/start_radius
-    /// (0 = straight run) and k1 = end_curvature REQUIRED non-zero (the
-    /// vertical clothoid's record-model rule verbatim — the record carries
-    /// no radius for blended verticals, and k1 = 0 restates PARABOLICARC).
-    Declared(DeclaredKappaRamp),
-}
-
-/// One declared segment of a parametric chain (API v14, additive).
+/// One declared segment of a parametric chain (api 14, the v2 shape).
 ///
-/// Fields mirror the record model's declared parameters. Radii are SIGNED
-/// (positive = CCW turn, negative = CW; 0 = infinite radius), the parameter
-/// convention the record layer already encodes. Species read the fields they
-/// need; a species with a required field missing is refused with a reason.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// Only continuity and the law ride the wire: the curve definition plus the
+/// start point and direction. There is no species enum and no per-species
+/// quantity vocabulary (gradients, radii, curvature-end fields, bank/cant
+/// fields): the driving ramp IS the law, declared as data, and every
+/// record-model reading of those names stays in the declaring plugin. The
+/// host evaluates the generic contract only (see [`CurveSegmentDef`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParametricSegment {
-    /// The segment species (must match the chain's plane).
-    pub species: ParametricSpecies,
+    /// The curve definition: length, the driving ramp, the cross-slope data.
+    pub def: CurveSegmentDef,
     /// Start point: plan = world (x, y); profile = (station, elevation).
     pub start_point: [f64; 2],
     /// Declared start direction, radians, ±2π-legal. Plan: bearing. Profile:
-    /// the slope angle atan(start_gradient) as declared (restated; the
-    /// gradient fields below are the record's authoritative vertical reads).
+    /// the slope angle as the record declares it (the slope itself is the
+    /// driving ramp's own data; this field is the continuity read the seam
+    /// audit and joins consult).
     pub start_direction: f64,
-    /// Declared start gradient, decimal fraction (vertical species;
-    /// uphill positive). 0 for plan species.
-    pub start_gradient: f64,
-    /// Declared end gradient, decimal fraction (vertical species). For
-    /// CONSTANTGRADIENT must equal the start gradient (the IFC reading).
-    pub end_gradient: f64,
-    /// Declared segment length: plan species = the arc length (CUBIC = the
-    /// chord run per the IFC cubic-parabola reading); profile = the
-    /// horizontal run (IfcAlignmentVerticalSegment.HorizontalLength).
-    /// 0 = terminator segment (stages nothing, checked for consistency).
-    pub length: f64,
-    /// Signed start radius; 0 = infinite radius (the flat transition start).
-    /// Vertical CIRCULARARC: the signed basis-circle radius;
-    /// PARABOLICARC: the signed vertex radius (Ifc RadiusOfCurvature);
-    /// vertical CLOTHOID: the incoming run's curvature (0 = straight run);
-    /// plan transitions: the start radius R1 (0 = infinite).
-    pub start_radius: f64,
-    /// Signed end radius; 0 when the species carries none.
-    pub end_radius: f64,
-    /// Vertical clothoid only: the outgoing run's curvature end value
-    /// (signed, = 1/R at the closing run). The vertical record model carries
-    /// no radius for CLOTHOID yet; until it does the consumer declares the
-    /// curvature ends here and the record layer owns the reading. 0 = not
-    /// declared (the clothoid law is then not realizable — refused).
-    pub end_curvature: f64,
-    /// Plan VIENNESEBEND only: the bank-angle change Δψ across the segment
-    /// (radians, from the cant layout) — the curvature law's
-    /// gravity-center correction term. 0 = the no-cant reading.
-    pub bank_change: f64,
-    /// Plan VIENNESEBEND only: the gravity-centre line height h (the
-    /// horizontal record's gravity_center_line_height). Pairs with
-    /// `bank_change`.
-    pub gravity_height: f64,
 }
 
 /// The declared chain (API v14, additive): the record layer's truth, turned
@@ -1956,7 +1829,9 @@ pub struct ParametricSegment {
 pub struct ParametricChain {
     /// The plane the chain lives in.
     pub plane: ParametricPlane,
-    /// The declared segments, start to end (at least one, even if 0-length).
+    /// The declared segments, start to end (at least one; each length must
+    /// be greater than zero — a zero-length terminator is a plugin's
+    /// staging detail, not a host contract, and refuses).
     pub segments: Vec<ParametricSegment>,
     /// Layer name for the staged display entities (the consumer's own
     /// display convention). Empty = the host's default layer.
@@ -1974,8 +1849,7 @@ pub struct ParametricSample {
     pub direction: [f64; 2],
 }
 
-/// **Generic curve-definition types (the v2 generalization; the reshape
-/// target of the in-place v14 envelope).**
+/// **Generic curve-definition types (api 14; the v2 in-place reshaping).**
 ///
 /// The host knows NO species: a curve is a driving-quantity ramp declared as
 /// DATA over the unit station parameter, evaluated by the host's generic
@@ -1984,11 +1858,9 @@ pub struct ParametricSample {
 /// deviation chords otherwise). Species semantics (which quantity drives,
 /// which ramps restate which law, what a segment's ends must be) are the
 /// declaring plugin's own checks — the host refuses only what it can state
-/// generically. These types stage ADDITIVELY first (everything that needs
-/// them compiles beside the named-species surface) and become the v14
-/// envelope's shapes when the switch wave lands (see
-/// `target/redesign_v2_unfrozen_plan.md`; no deployed plugins pre-date the
-/// reshaping, and api_version stays 14).
+/// generically. These ARE the v14 envelope's shapes: the envelope was
+/// reshaped IN PLACE before release (api_version stays 14) because no
+/// deployed plugins pre-date the reshaping.
 ///
 /// A curve ramp: the driving quantity's values over one unit parameter
 /// (not `Copy`: the sampled arm carries a table; clone freely — staging
@@ -2121,33 +1993,36 @@ pub struct PluginGripSchemaEntry {
     /// declarations and streaming-only grips) keeps the v11/v12 semantics
     /// untouched.
     #[serde(default)]
-    pub drives: Option<PluginGripDrive>,
+    pub drives: Option<PluginGripAnchor>,
 }
 
-/// The design point a descriptor-backed grip re-anchors (API v14,
-/// additive; serde default keeps earlier declarations readable). The
-/// cursor's move REPLACES that point of the declared design: the drive
-/// segment's named end follows the cursor and the section re-derives per
-/// the record model's own laws (the run becomes the station span, the
-/// gradient pair and the implied vertex radius re-derive per the section's
-/// species), the joints re-declare downstream from the engine's own
-/// sampling, and the chain's own audit gates every move's design. The host
-/// serves only what it declares here: a drive the host cannot serve (the
+/// The design point a descriptor-backed grip re-anchors (api 14; the v2
+/// anchor-law shape — the v14 envelope was reshaped in place before
+/// release, so the earlier empty drive struct never shipped). The cursor's
+/// move REPLACES that point of the declared design: the segment's named
+/// end follows the cursor per the declared anchor law, the driving ramp
+/// re-derives per its own integral law (one generic arm-consistent
+/// re-anchor — no per-species host code), the joints re-declare downstream
+/// from the engine's own sampling, and the chain's own audit gates every
+/// move's design. The host serves only what it can state generically: the
+/// profile plane's end-side anchor laws. A drive outside that set (the
 /// plan plane, the START side, a segment index out of the descriptor's
 /// range) keeps the v12 streaming path, with one headline in the error
 /// queue naming the constraint. Future drives append as NEW serde-default
 /// fields on this struct (never new positions inside it) so older hosts
 /// deserialize them harmlessly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PluginGripDrive {
+pub struct PluginGripAnchor {
     /// Zero-based index into the descriptor chain's segments.
     pub segment: u32,
     /// Whether the grip re-anchors that segment's START point; `false`
-    /// names the segment's end. The host currently serves the END side
-    /// only (an END-point drag fully re-derives the section per its own
-    /// record-model laws); a declared START side keeps the streaming path
-    /// until a host release serves it.
+    /// names the segment's end. The host serves the END side only (an
+    /// END-point drag fully re-derives the section through its own ramp
+    /// law); a declared START side keeps the streaming path until a host
+    /// release serves it.
     pub at_start: bool,
+    /// The record-model quantity this grip re-anchors.
+    pub anchor: AnchorLaw,
 }
 
 /// One declared class parameter (API v14, additive): a name, a value kind,

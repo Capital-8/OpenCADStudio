@@ -498,7 +498,7 @@ mod tests {
         // API v14: the class frames keep the same wire discipline — serialize
         // then deserialize byte-clean, in declared order.
         let class = crate::host::PluginClassDeclaration {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             grip_schema: vec![crate::host::PluginGripSchemaEntry {
                 grip_id: 1,
@@ -521,32 +521,31 @@ mod tests {
             PluginRequest::RegisterPluginClass { class: got } if got == class)
         );
         let instance = crate::host::PluginClassInstance {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             design: crate::host::PluginDisplayDescriptor::ParametricChain(
                 crate::host::ParametricChain {
                     plane: crate::host::ParametricPlane::Profile,
                     segments: vec![crate::host::ParametricSegment {
-                        species: crate::host::ParametricSpecies::Vertical(
-                            crate::host::VerticalSegmentSpecies::ParabolicArc,
-                        ),
+                        def: crate::host::CurveSegmentDef {
+                            // slope ramp 0 -> 0.1 over the run (the record's
+                            // parabola restated as data).
+                            length: 80.0,
+                            ramp: crate::host::Ramp::Polynomial {
+                                degree: 1,
+                                coeffs: [0.0, 0.1, 0.0, 0.0],
+                            },
+                            cross_slope: None,
+                        },
                         start_point: [0.0, 100.0],
-                        start_direction: 0.0,
-                        start_gradient: 0.0,
-                        end_gradient: 0.1,
-                        length: 80.0,
-                        start_radius: 800.0,
-                        end_radius: 0.0,
-                        end_curvature: 0.0,
-                        bank_change: 0.0,
-                        gravity_height: 0.0,
+                        start_direction: 0.0f64.atan(),
                     }],
-                    layer: "CVI_PROFILE".to_string(),
+                    layer: "PLUGIN_PROFILE".to_string(),
                 },
             ),
             tolerance: 1e-3,
-            layer: "CVI_PROFILE".to_string(),
-            design_record: "CVIFC_ALIGN_DISPLAY".to_string(),
+            layer: "PLUGIN_PROFILE".to_string(),
+            design_record: "PLUGIN_ALIGN_DISPLAY".to_string(),
         };
         let bytes = bincode::serialize(&PluginRequest::StagePluginClassInstance {
             instance: instance.clone(),
@@ -722,25 +721,25 @@ mod tests {
     #[test]
     fn parametric_chain_requests_roundtrip() {
         // The V14 declared-chain payload survives one bincode hop intact:
-        // species, declared parameters, and the sampled answer's shape.
+        // the ramp data, the continuity fields, and the sampled answer's
+        // shape.
         let chain = crate::host::ParametricChain {
             plane: crate::host::ParametricPlane::Plan,
             segments: vec![crate::host::ParametricSegment {
-                species: crate::host::ParametricSpecies::Horizontal(
-                    crate::host::HorizontalSegmentSpecies::Clothoid,
-                ),
+                def: crate::host::CurveSegmentDef {
+                    // curvature ramp 0 -> -1/300 over the arc (the record's
+                    // straight-to-circle spiral restated as data).
+                    length: 60.0,
+                    ramp: crate::host::Ramp::Polynomial {
+                        degree: 1,
+                        coeffs: [0.0, -1.0 / 300.0, 0.0, 0.0],
+                    },
+                    cross_slope: None,
+                },
                 start_point: [40.0, 0.0],
                 start_direction: 0.0,
-                start_gradient: 0.0,
-                end_gradient: 0.0,
-                length: 60.0,
-                start_radius: 0.0,
-                end_radius: -300.0,
-                end_curvature: 0.0,
-                bank_change: 0.0,
-                gravity_height: 0.0,
             }],
-            layer: "CVI_DISPLAY".to_string(),
+            layer: "PLUGIN_DISPLAY".to_string(),
         };
         let bytes = bincode::serialize(&PluginRequest::StageParametricChain {
             reference_name: "align-1".to_string(),

@@ -236,7 +236,7 @@ fn install_sink(plugin: &str) -> SinkState {
                 }
                 if let Some((handle, radius)) = *settle_write.borrow() {
                     // The consumer's exact shape: its own one-scope contract.
-                    host.push_undo("CVI: PI radius");
+                    host.push_undo("PLUGIN: PI radius");
                     if let Some(EntityType::Arc(arc)) = host.document().get_entity(handle).cloned()
                     {
                         let mut updated = arc;
@@ -655,7 +655,7 @@ fn custom_grip_drag_settles_as_one_plugin_labeled_step() {
     assert_eq!(undo_entry_count(&app), before_undo + 1);
     assert_eq!(
         last_undo_label(&app).as_deref(),
-        Some("CVI: PI radius"),
+        Some("PLUGIN: PI radius"),
         "the settled drag totals exactly the plugin's one labeled step"
     );
     assert!((radius_of(&app, anchor) - 5.0).abs() < 1e-12);
@@ -944,7 +944,7 @@ fn mcp_grip_drag_routes_a_custom_grip_to_its_owner() {
     );
     drop(events);
     assert_eq!(undo_entry_count(&app), before_undo + 1);
-    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: PI radius"));
+    assert_eq!(last_undo_label(&app).as_deref(), Some("PLUGIN: PI radius"));
     assert!((radius_of(&app, anchor) - 4.0).abs() < 1e-12);
 
     // Unknown plugin-grip id refuses.
@@ -1073,7 +1073,7 @@ fn live_geometry_moves_elements_during_the_drag() {
     let _ = app.settle_plugin_grip_drag();
     assert!((radius_of(&app, anchor) - 5.0).abs() < 1e-12);
     assert_eq!(undo_entry_count(&app), before_undo + 1);
-    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: PI radius"));
+    assert_eq!(last_undo_label(&app).as_deref(), Some("PLUGIN: PI radius"));
     let _ = app.update(Message::Undo);
     assert_eq!(serialized(&app, anchor), before, "undo restores byte-exact");
     grip_points::remove_in_process_sink(TEST_PLUGIN);
@@ -1204,7 +1204,7 @@ fn settle_after_many_moves_writes_one_plugin_step() {
 
     // Settle-write: the full begin â†’ move â†’ settle-with-writes window.
     let _ = app.settle_plugin_grip_drag();
-    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: PI radius"));
+    assert_eq!(last_undo_label(&app).as_deref(), Some("PLUGIN: PI radius"));
     assert!((radius_of(&app, anchor) - 5.0).abs() < 1e-12);
 
     // Re-declare diff at 1 000 grips: the unchanged batch must stay cheap.
@@ -1456,7 +1456,7 @@ fn constraint_create_bonds_without_echo_in_one_plugin_step() {
     let mut host = crate::app::plugin_host::HostSession::new(&mut app, i);
     // The re-bond shape: the plugin opens its one scope, then composes the
     // constraint directly â€” no COINCIDENT command replay, no prompt echo.
-    host.push_undo("CVI: re-bond");
+    host.push_undo("PLUGIN: re-bond");
     host.constraint_create(ocs_plugin_api::host::PluginConstraint::Coincident {
         first: ocs_plugin_api::host::PluginConstraintPick {
             handle: Some(a),
@@ -1475,7 +1475,7 @@ fn constraint_create_bonds_without_echo_in_one_plugin_step() {
 
     // ONE plugin-labeled undo step; zero command-line echo.
     assert_eq!(undo_entry_count(&app), before_undo + 1);
-    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: re-bond"));
+    assert_eq!(last_undo_label(&app).as_deref(), Some("PLUGIN: re-bond"));
     assert_eq!(
         app.command_line.history.len(),
         history_before,
@@ -1522,7 +1522,7 @@ fn dirty_regions_ride_the_boundary_notification() {
         assert!(host.write_record(
             handle,
             codec::xdata::ExtendedDataRecord {
-                application_name: "CVIFC".to_string(),
+                application_name: "PLUGIN".to_string(),
                 values: vec![codec::xdata::XDataValue::String("pi-grip".to_string())],
             },
         ));
@@ -1682,7 +1682,7 @@ fn first_settle_strike_cancels_the_drag_and_keeps_the_plugin_grips() {
         app.drive_plugin_grip_settle_to_completion(std::time::Duration::from_millis(500)),
         "the recovered settle finalizes"
     );
-    assert_eq!(last_undo_label(&app).as_deref(), Some("CVI: PI radius"));
+    assert_eq!(last_undo_label(&app).as_deref(), Some("PLUGIN: PI radius"));
     assert_eq!(strike_count(&app, TEST_PLUGIN), 0, "the recovery resets");
     grip_points::remove_in_process_sink(TEST_PLUGIN);
 }
@@ -1763,28 +1763,34 @@ fn third_settle_strike_tears_the_connection_down_and_arms_the_rearm() {
 // â”€â”€ The descriptor-backed grip drag (API v14) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
-fn descriptor_reanchor_solves_curvature_ends_by_bisection() {
-    // The curvature-end species have no closed-form re-anchor: the height
-    // target solves through the engine's own sampling, deterministically.
-    // A taller end needs a bigger end curvature; the resulting chain passes
-    // its own audit (the staging build).
+fn descriptor_reanchor_solves_ramp_ends_by_bisection() {
+    // The EndCurvatureScale anchor law voices the whole driving ramp
+    // through the deterministic bracketed bisection (16 doublings + 60
+    // bisects): a taller end needs a bigger scale; the resulting chain
+    // passes its own audit (the staging build). The fixture restates the
+    // old sigmoid's sheet reading as dense sampled slope data — the same
+    // table law a plugin ships for its transcendental records.
     use crate::app::update::plugin_grips::reanchor_profile_chain;
+    use ocs_plugin_api::host::AnchorLaw;
+    let values: Vec<f64> = (0..101)
+        .map(|i| {
+            let xi = i as f64 / 100.0;
+            0.025 + 0.225 * xi * xi
+        })
+        .collect();
     let chain = ocs_plugin_api::host::ParametricChain {
         plane: ocs_plugin_api::host::ParametricPlane::Profile,
         segments: vec![ocs_plugin_api::host::ParametricSegment {
-            species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                ocs_plugin_api::host::VerticalSegmentSpecies::Clothoid,
-            ),
+            def: ocs_plugin_api::host::CurveSegmentDef {
+                length: 100.0,
+                ramp: ocs_plugin_api::host::Ramp::Sampled {
+                    n: 101,
+                    values: values.clone(),
+                },
+                cross_slope: None,
+            },
             start_point: [0.0, 0.0],
-            start_direction: 0.0,
-            start_gradient: 0.0,
-            end_gradient: 0.25,
-            length: 100.0,
-            start_radius: 0.0,
-            end_radius: 0.0,
-            end_curvature: 0.005,
-            bank_change: 0.0,
-            gravity_height: 0.0,
+            start_direction: values[0].atan(),
         }],
         layer: String::new(),
     };
@@ -1793,17 +1799,25 @@ fn descriptor_reanchor_solves_curvature_ends_by_bisection() {
         .expect("the base chain derives");
     let _ = base;
 
-    // The re-anchor: the same run (100.0), the end lifted to 11.0.
+    // The re-anchor: the same run (100.0), the end lifted to 11.0, the
+    // scale law solving through the bisection discipline.
     let edited = reanchor_profile_chain(
         &chain,
         0,
+        AnchorLaw::EndCurvatureScale,
         glam::DVec3::new(100.0, 11.0, 0.0),
     )
     .expect("the height target solves");
-    let k1 = edited.segments[0].end_curvature;
+    let ocs_plugin_api::host::Ramp::Sampled {
+        values: solved, ..
+    } = &edited.segments[0].def.ramp
+    else {
+        panic!("the scale keeps the sampled arm");
+    };
+    let end_value = solved[solved.len() - 1];
     assert!(
-        (k1 - 0.005).abs() > 1e-6,
-        "the curvature end moved to absorb the height: {k1}"
+        (end_value - 0.25).abs() > 1e-6,
+        "the ramp's end value moved up to absorb the height: {end_value}"
     );
     let sample = crate::parametric::sample_chain(&edited, 100.0)
         .expect("samples")
@@ -1819,63 +1833,66 @@ fn descriptor_reanchor_solves_curvature_ends_by_bisection() {
     let again = reanchor_profile_chain(
         &chain,
         0,
+        AnchorLaw::EndCurvatureScale,
         glam::DVec3::new(100.0, 11.0, 0.0),
     )
     .expect("solves again");
-    assert_eq!(again.segments[0].end_curvature, k1);
+    let ocs_plugin_api::host::Ramp::Sampled {
+        values: solved_again,
+        ..
+    } = &again.segments[0].def.ramp
+    else {
+        panic!("the scale keeps the sampled arm");
+    };
+    assert_eq!(
+        solved_again[solved_again.len() - 1].to_bits(),
+        end_value.to_bits(),
+        "the bisection is bit-deterministic"
+    );
 }
 
-/// The crest chain the drag-policy tests stage (a {constant, parabolic,
-/// constant} profile sheet): the crest's end sits at (300, 8) with the
-/// vertex radius 4000 = 200 / (0.06 - 0.01).
+/// The crest chain the drag-policy tests stage (a {constant slope,
+/// slope-linear, constant slope} profile sheet as ramp data): the crest's
+/// end sits at (300, 8) under the mean-gradient law.
 fn crest_profile_chain() -> ocs_plugin_api::host::ParametricChain {
     ocs_plugin_api::host::ParametricChain {
         plane: ocs_plugin_api::host::ParametricPlane::Profile,
         segments: vec![
             ocs_plugin_api::host::ParametricSegment {
-                species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                    ocs_plugin_api::host::VerticalSegmentSpecies::ConstantGradient,
-                ),
+                def: ocs_plugin_api::host::CurveSegmentDef {
+                    length: 100.0,
+                    ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                        degree: 0,
+                        coeffs: [0.01, 0.0, 0.0, 0.0],
+                    },
+                    cross_slope: None,
+                },
                 start_point: [0.0, 0.0],
-                start_direction: 0.0,
-                start_gradient: 0.01,
-                end_gradient: 0.01,
-                length: 100.0,
-                start_radius: 0.0,
-                end_radius: 0.0,
-                end_curvature: 0.0,
-                bank_change: 0.0,
-                gravity_height: 0.0,
+                start_direction: 0.01f64.atan(),
             },
             ocs_plugin_api::host::ParametricSegment {
-                species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                    ocs_plugin_api::host::VerticalSegmentSpecies::ParabolicArc,
-                ),
+                def: ocs_plugin_api::host::CurveSegmentDef {
+                    length: 200.0,
+                    ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                        degree: 1,
+                        coeffs: [0.01, 0.05, 0.0, 0.0],
+                    },
+                    cross_slope: None,
+                },
                 start_point: [100.0, 1.0],
                 start_direction: 0.01f64.atan(),
-                start_gradient: 0.01,
-                end_gradient: 0.06,
-                length: 200.0,
-                start_radius: 4000.0,
-                end_radius: 0.0,
-                end_curvature: 0.0,
-                bank_change: 0.0,
-                gravity_height: 0.0,
             },
             ocs_plugin_api::host::ParametricSegment {
-                species: ocs_plugin_api::host::ParametricSpecies::Vertical(
-                    ocs_plugin_api::host::VerticalSegmentSpecies::ConstantGradient,
-                ),
+                def: ocs_plugin_api::host::CurveSegmentDef {
+                    length: 80.0,
+                    ramp: ocs_plugin_api::host::Ramp::Polynomial {
+                        degree: 0,
+                        coeffs: [0.06, 0.0, 0.0, 0.0],
+                    },
+                    cross_slope: None,
+                },
                 start_point: [300.0, 8.0],
                 start_direction: 0.06f64.atan(),
-                start_gradient: 0.06,
-                end_gradient: 0.06,
-                length: 80.0,
-                start_radius: 0.0,
-                end_radius: 0.0,
-                end_curvature: 0.0,
-                bank_change: 0.0,
-                gravity_height: 0.0,
             },
         ],
         layer: String::new(),
@@ -1891,7 +1908,7 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
     // write window â€” records first, then the re-stage â€” one labeled undo
     // step throughout, and the undo round-trips byte-exactly.
     let mut app = app();
-    let plugin = "CVIFC";
+    let plugin = "PLUGIN";
     let i = tab(&app);
     // A sink first: the class register's own aliveness gate treats an in-process test sink as the loaded+alive marker (grip_points); the full handler installed below replaces this placeholder.
     crate::plugin::grip_points::install_in_process_sink(plugin, |_host, _event| {
@@ -1901,14 +1918,15 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
     host.register_plugin_class(
         plugin,
         &ocs_plugin_api::host::PluginClassDeclaration {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             grip_schema: vec![ocs_plugin_api::host::PluginGripSchemaEntry {
                 grip_id: 7,
                 param_name: "peak_gradient".to_string(),
-                drives: Some(ocs_plugin_api::host::PluginGripDrive {
+                drives: Some(ocs_plugin_api::host::PluginGripAnchor {
                     segment: 1,
                     at_start: false,
+                    anchor: ocs_plugin_api::host::AnchorLaw::EndStationToXY,
                 }),
             }],
             parameters: vec![ocs_plugin_api::host::PluginClassParameter {
@@ -1923,21 +1941,21 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
         .stage_plugin_class_instance(
             plugin,
             &ocs_plugin_api::host::PluginClassInstance {
-                class_id: "CVI_ALIGN_DISPLAY".to_string(),
+                class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
                 schema_version: 4,
                 design: ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
                     crest_profile_chain(),
                 ),
                 tolerance: 1e-3,
-                layer: "CVI_PROFILE".to_string(),
-                design_record: "CVIFC_ALIGN_DISPLAY".to_string(),
+                layer: "PLUGIN_PROFILE".to_string(),
+                design_record: "PLUGIN_ALIGN_DISPLAY".to_string(),
             },
         )
         .expect("the crest instance stages");
     assert_eq!(handles.len(), 3, "three exact carriers stage");
     host.create_xrecord(
-        &["CVIFC"],
-        "CVIFC_ALIGN_DISPLAY",
+        &["PLUGIN"],
+        "PLUGIN_ALIGN_DISPLAY",
         vec![
             codec::objects::XRecordEntry::string(1, "peak_gradient"),
             codec::objects::XRecordEntry::new(
@@ -1991,12 +2009,13 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
                         "0.09",
                     )
                     .expect("the parameter row writes in the window");
-                    host.push_undo("CVIFC: grip edit");
+                    host.push_undo("PLUGIN: grip edit");
                     let final_point =
                         glam::DVec3::new(event.point[0], event.point[1], event.point[2]);
                     let design = crate::app::update::plugin_grips::reanchor_profile_chain(
                         &crest2.borrow().clone(),
                         1,
+                        ocs_plugin_api::host::AnchorLaw::EndStationToXY,
                         final_point,
                     )
                     .expect("the plugin's own law re-derives the settled design");
@@ -2080,7 +2099,7 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
     // (the stamp read goes through its own host session).
     for handle in &handles {
         let mut session = crate::app::plugin_host::HostSession::new(&mut app, i);
-        assert!(session.read_record(*handle, "CVI_ALIGN_DISPLAY").is_some());
+        assert!(session.read_record(*handle, "PLUGIN_ALIGN_DISPLAY").is_some());
     }
     for handle in &handles {
         assert!(app.tabs[i].scene.is_reference_only(*handle));
@@ -2098,7 +2117,7 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
     );
     assert_eq!(
         last_undo_label(&app).as_deref(),
-        Some("CVIFC: grip edit"),
+        Some("PLUGIN: grip edit"),
         "the last step is the re-stage's own label"
     );
     {
@@ -2114,7 +2133,7 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
             (spline.control_points[2].y - 11.0).abs() < 1e-9,
             "the re-stage re-applied the settled design"
         );
-        assert!(host.read_record(handles[0], "CVI_ALIGN_DISPLAY").is_some());
+        assert!(host.read_record(handles[0], "PLUGIN_ALIGN_DISPLAY").is_some());
     }
     // Two undos round-trip the original display set (the re-stage's step,
     // then the record row's step).
@@ -2145,7 +2164,7 @@ fn descriptor_refusals_keep_the_streaming_path() {
     // the v12 streaming semantics stay exactly as before: Move frames flow,
     // the preview/live channels apply, the settle composes as before.
     let mut app = app();
-    let plugin = "CVIFC";
+    let plugin = "PLUGIN";
     let i = tab(&app);
     // A sink first: the class register's own aliveness gate treats an in-process test sink as the loaded+alive marker (grip_points); the full handler installed below replaces this placeholder.
     crate::plugin::grip_points::install_in_process_sink(plugin, |_host, _event| {
@@ -2155,14 +2174,15 @@ fn descriptor_refusals_keep_the_streaming_path() {
     host.register_plugin_class(
         plugin,
         &ocs_plugin_api::host::PluginClassDeclaration {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             grip_schema: vec![ocs_plugin_api::host::PluginGripSchemaEntry {
                 grip_id: 7,
                 param_name: "peak_gradient".to_string(),
-                drives: Some(ocs_plugin_api::host::PluginGripDrive {
+                drives: Some(ocs_plugin_api::host::PluginGripAnchor {
                     segment: 1,
                     at_start: true,
+                    anchor: ocs_plugin_api::host::AnchorLaw::EndStationToXY,
                 }),
             }],
             parameters: vec![],
@@ -2173,14 +2193,14 @@ fn descriptor_refusals_keep_the_streaming_path() {
         .stage_plugin_class_instance(
             plugin,
             &ocs_plugin_api::host::PluginClassInstance {
-                class_id: "CVI_ALIGN_DISPLAY".to_string(),
+                class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
                 schema_version: 4,
                 design: ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
                     crest_profile_chain(),
                 ),
                 tolerance: 1e-3,
-                layer: "CVI_PLAN".to_string(),
-                design_record: "CVIFC_ALIGN_PLAN".to_string(),
+                layer: "PLUGIN_PLAN".to_string(),
+                design_record: "PLUGIN_ALIGN_PLAN".to_string(),
             },
         )
         .expect("the plan instance stages");
@@ -2267,7 +2287,7 @@ fn descriptor_moves_refused_by_the_model_keep_the_last_good_design() {
     // and the drag continues: the next legal move re-derives fully. The
     // settle without writes stays zero steps.
     let mut app = app();
-    let plugin = "CVIFC";
+    let plugin = "PLUGIN";
     let i = tab(&app);
     // A sink first: the class register's own aliveness gate treats an in-process test sink as the loaded+alive marker (grip_points); the full handler installed below replaces this placeholder.
     crate::plugin::grip_points::install_in_process_sink(plugin, |_host, _event| {
@@ -2277,14 +2297,15 @@ fn descriptor_moves_refused_by_the_model_keep_the_last_good_design() {
     host.register_plugin_class(
         plugin,
         &ocs_plugin_api::host::PluginClassDeclaration {
-            class_id: "CVI_ALIGN_DISPLAY".to_string(),
+            class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
             schema_version: 4,
             grip_schema: vec![ocs_plugin_api::host::PluginGripSchemaEntry {
                 grip_id: 7,
                 param_name: "peak_gradient".to_string(),
-                drives: Some(ocs_plugin_api::host::PluginGripDrive {
+                drives: Some(ocs_plugin_api::host::PluginGripAnchor {
                     segment: 1,
                     at_start: false,
+                    anchor: ocs_plugin_api::host::AnchorLaw::EndStationToXY,
                 }),
             }],
             parameters: vec![],
@@ -2295,14 +2316,14 @@ fn descriptor_moves_refused_by_the_model_keep_the_last_good_design() {
         .stage_plugin_class_instance(
             plugin,
             &ocs_plugin_api::host::PluginClassInstance {
-                class_id: "CVI_ALIGN_DISPLAY".to_string(),
+                class_id: "PLUGIN_ALIGN_DISPLAY".to_string(),
                 schema_version: 4,
                 design: ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(
                     crest_profile_chain(),
                 ),
                 tolerance: 1e-3,
-                layer: "CVI_PROFILE".to_string(),
-                design_record: "CVIFC_ALIGN_DISPLAY".to_string(),
+                layer: "PLUGIN_PROFILE".to_string(),
+                design_record: "PLUGIN_ALIGN_DISPLAY".to_string(),
             },
         )
         .expect("the crest stages");

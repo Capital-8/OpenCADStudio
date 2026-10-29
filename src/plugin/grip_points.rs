@@ -487,9 +487,13 @@ pub(crate) struct DescriptorGripDrag {
     pub handles: Vec<Handle>,
     /// Zero-based index of the re-anchored segment.
     pub segment: usize,
+    /// The record-model anchor law the drive declares (which quantity the
+    /// cursor re-anchors; the host's solver serves the end-side set).
+    pub anchor: ocs_plugin_api::host::AnchorLaw,
     /// Whether one move refusal was already noted (one headline per drag).
     pub refusal_noted: bool,
 }
+
 
 /// The currently hovered plugin-declared grip (drives hover highlighting
 /// through the same overlay the built-in grip hover uses).

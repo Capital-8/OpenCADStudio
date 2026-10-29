@@ -1,40 +1,44 @@
-//! Parametric-chain staging budget benchmark (API v14).
+//! Parametric-chain staging budget benchmark (api 14, the v2 generic
+//! shapes — the envelope was reshaped in place; api_version stays 14).
 //!
 //! Measures the numbers the parametric-display contract is budgeted
 //! against:
 //!
 //! 1. `build_display_entities` for a 50-segment welded chain — short lines
-//!    alternating with gentle (R=-3000, L=40) clothoids, seams exact by
-//!    construction, the staged footprint under the
-//!    MAX_PLUGIN_LIVE_ENTITIES ceiling — at the production tolerance
-//!    1e-3 m. The commission's budget: under 5 ms.
-//! 2. The same builder on a chord-heavy fixture (five clothoid pairs at
+//!    alternating with gentle curvature-ramp sections (linear 0 -> 1/R,
+//!    R=-3000, L=40; the record's straight-to-circle spiral as declared
+//!    data), seams exact by construction, the staged footprint under the
+//!    MAX_PLUGIN_LIVE_ENTITIES ceiling — at the production tolerance 1e-3
+//!    m. The commission's budget: under 5 ms.
+//! 2. The same builder on a chord-heavy fixture (five section pairs at
 //!    R=-300, L=60, ~200 entities) — the per-entity chord cost.
 //! 3. `sample_chain`'s per-call latency over the welded chain (the
 //!    placement/basis-curve read path). The commission's budget: under
 //!    1 microsecond per sample.
-//! 4. The grip-edit review (the drag-policy decision input): per-move host-local
-//!    re-derivation cost when a drag revises the section's end radius —
-//!    the Fresnel/chord extreme (CLOTHOID) against the exact Bézier-spline
-//!    extreme (CUBIC), plus the point-projection tier on the same design.
-//! 5. The Declared curvature-law head (the plugin-declared ramp executed
-//!    by the generic integrator): the staging budget re-measured for the
-//!    declared shape — data-driven heads, one shared kernel.
+//! 4. The grip-edit review (the drag-policy decision input): per-move
+//!    host-local re-derivation cost when a drag revises the section's end
+//!    curvature through its own ramp data — the measured-chord extreme
+//!    (the linear-curvature ramp) against the exact-carrier extreme (the
+//!    constant-curvature arc), plus the point-projection tier on the same
+//!    design.
+//! 5. The Sampled tier (the new stage-time cumulative table): a chain
+//!    whose sections carry dense sampled slope/curvature tables — the
+//!    staging budget re-measured for table laws, then per-move
+//!    re-derivations with the ramp's end value dragged across the table's
+//!    tail (the cumulative's own reading).
 //!
 //! Deterministic: fixed fixtures, no randomness. Run:
 //! `cargo bench --bench parametric_display_staging`
 
+use std::f64::consts::PI;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use ocs_plugin_api::host::{
-    DeclaredKappaRamp, HorizontalSegmentSpecies, ParametricChain, ParametricPlane,
-    ParametricSegment, ParametricSpecies,
+    CurveSegmentDef, MAX_PLUGIN_LIVE_ENTITIES, ParametricChain, ParametricPlane,
+    ParametricSegment, Ramp,
 };
-use OpenCADStudio::parametric::{
-    build_display_entities, commission_demo_plan_chain, commission_demo_profile_chain,
-    sample_chain,
-};
+use OpenCADStudio::parametric::{build_display_entities, sample_chain};
 
 const RUNS: usize = 5;
 const WARMUP: usize = 2;
@@ -43,6 +47,20 @@ const WELDED_PAIRS: usize = 25;
 const CHORD_PAIRS: usize = 5;
 const GRIP_MOVES: usize = 1000;
 
+fn ramp_const(value: f64) -> Ramp {
+    Ramp::Polynomial {
+        degree: 0,
+        coeffs: [value, 0.0, 0.0, 0.0],
+    }
+}
+
+fn ramp_linear(start: f64, end: f64) -> Ramp {
+    Ramp::Polynomial {
+        degree: 1,
+        coeffs: [start, end - start, 0.0, 0.0],
+    }
+}
+
 fn stepped(point: [f64; 2], direction: f64, length: f64) -> [f64; 2] {
     [
         point[0] + length * direction.cos(),
@@ -50,47 +68,46 @@ fn stepped(point: [f64; 2], direction: f64, length: f64) -> [f64; 2] {
     ]
 }
 
-fn push_line(segments: &mut Vec<ParametricSegment>, cursor: &mut [f64; 2], heading: f64, length: f64) {
+fn push_line(
+    segments: &mut Vec<ParametricSegment>,
+    cursor: &mut [f64; 2],
+    heading: f64,
+    length: f64,
+) {
     segments.push(ParametricSegment {
-        species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+        def: CurveSegmentDef {
+            length,
+            ramp: ramp_const(0.0),
+            cross_slope: None,
+        },
         start_point: *cursor,
         start_direction: heading,
-        start_gradient: 0.0,
-        end_gradient: 0.0,
-        length,
-        start_radius: 0.0,
-        end_radius: 0.0,
-        end_curvature: 0.0,
-        bank_change: 0.0,
-        gravity_height: 0.0,
     });
     *cursor = stepped(*cursor, heading, length);
 }
 
-fn clothoid(
+/// The plan's linear-curvature section (kappa 0 -> 1/r over the arc
+/// length): the Fresnel-spiral law as ramp data.
+fn spiral_section(
     r: f64,
     cursor: [f64; 2],
     heading: f64,
     length: f64,
 ) -> (ParametricSegment, f64, [f64; 2]) {
     let segment = ParametricSegment {
-        species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
+        def: CurveSegmentDef {
+            length,
+            ramp: ramp_linear(0.0, 1.0 / r),
+            cross_slope: None,
+        },
         start_point: cursor,
         start_direction: heading,
-        start_gradient: 0.0,
-        end_gradient: 0.0,
-        length,
-        start_radius: 0.0,
-        end_radius: r,
-        end_curvature: 0.0,
-        bank_change: 0.0,
-        gravity_height: 0.0,
     };
     let dtheta = length / (2.0 * r);
     let end = {
         // The Fresnel series places the end (the engine's own oracle math).
         let b = 1.0 / (2.0 * r * length);
-        fresnel_end(b, length)
+        spiral_end(b, length)
     };
     (
         segment,
@@ -102,31 +119,111 @@ fn clothoid(
     )
 }
 
-fn fresnel_end(b: f64, s: f64) -> (f64, f64) {
+fn spiral_end(b: f64, s: f64) -> (f64, f64) {
     fn factorial(n: usize) -> f64 {
         (1..=n as u64).fold(1u128, |acc: u128, v| acc.saturating_mul(v as u128)) as f64
     }
     let (mut x, mut y) = (0.0f64, 0.0f64);
     for k in 0..12usize {
         let sign = if k % 2 == 0 { 1.0 } else { -1.0 };
-        x += sign * b.powi(2 * k as i32)
-            * s.powi(4 * k as i32 + 1)
+        x += sign * b.powi(2 * k as i32) * s.powi(4 * k as i32 + 1)
             / (factorial(2 * k) * (4.0 * k as f64 + 1.0));
-        y += sign * b.powi(2 * k as i32 + 1)
-            * s.powi(4 * k as i32 + 3)
+        y += sign * b.powi(2 * k as i32 + 1) * s.powi(4 * k as i32 + 3)
             / (factorial(2 * k + 1) * (4.0 * k as f64 + 3.0));
     }
     (x, y)
 }
 
-/// The welded 50-segment chain (lines + gentle clothoids), seams exact.
-fn welded_chain(r: f64, line_length: f64, clothoid_length: f64, pairs: usize) -> ParametricChain {
+/// The cosine-transition law as dense SAMPLED curvature data: kappa(xi) =
+/// (1/R) * (1 - cos(pi*xi)) / 2 — the heading half-wave the record's
+/// cosine transition restates as a table.
+fn sampled_cosine_kappa(r: f64, n: usize) -> Ramp {
+    let values: Vec<f64> = (0..n)
+        .map(|i| {
+            let xi = i as f64 / (n - 1) as f64;
+            (1.0 / r) * 0.5 * (1.0 - (PI * xi).cos())
+        })
+        .collect();
+    Ramp::Sampled { n: n as u32, values }
+}
+
+/// The welded chain of lines + dense SAMPLED-ramp sections, the seams
+/// declared by the engine's own sampling (each front's end re-declares
+/// the next section's continuity; no duplicated math at the fixture).
+fn welded_sampled_chain(
+    r: f64,
+    line_length: f64,
+    section_length: f64,
+    pairs: usize,
+) -> ParametricChain {
+    let mut segments: Vec<ParametricSegment> = Vec::new();
+    let mut cursor = [0.0f64, 0.0];
+    let mut heading = 0.0f64;
+    let mut front = ParametricChain {
+        plane: ParametricPlane::Plan,
+        segments: Vec::new(),
+        layer: String::new(),
+    };
+    let advance = |front: &ParametricChain| -> ([f64; 2], f64) {
+        let total: f64 = front.segments.iter().map(|s| s.def.length).sum();
+        let joint = sample_chain(front, total)
+            .unwrap_or_else(|e| panic!("the sampled fixture's front samples: {e}"))
+            .expect("the front's own end samples");
+        (
+            joint.point,
+            joint.direction[1].atan2(joint.direction[0]),
+        )
+    };
+    for _ in 0..pairs {
+        segments.push(ParametricSegment {
+            def: CurveSegmentDef {
+                length: line_length,
+                ramp: ramp_const(0.0),
+                cross_slope: None,
+            },
+            start_point: cursor,
+            start_direction: heading,
+        });
+        front.segments = segments.clone();
+        let (point, direction) = advance(&front);
+        cursor = point;
+        heading = direction;
+        segments.push(ParametricSegment {
+            def: CurveSegmentDef {
+                length: section_length,
+                ramp: sampled_cosine_kappa(r, 513),
+                cross_slope: None,
+            },
+            start_point: cursor,
+            start_direction: heading,
+        });
+        front.segments = segments.clone();
+        let (point, direction) = advance(&front);
+        cursor = point;
+        heading = direction;
+    }
+    ParametricChain {
+        plane: ParametricPlane::Plan,
+        segments,
+        layer: String::new(),
+    }
+}
+
+/// The welded chain (lines + sections of the given ramp builder), the
+/// seams placed by construction.
+fn welded_chain(
+    r: f64,
+    line_length: f64,
+    section_length: f64,
+    pairs: usize,
+    section: impl Fn(f64, [f64; 2], f64, f64) -> (ParametricSegment, f64, [f64; 2]),
+) -> ParametricChain {
     let mut segments = Vec::new();
     let mut cursor = [0.0f64, 0.0];
     let mut heading = 0.0f64;
     for _ in 0..pairs {
         push_line(&mut segments, &mut cursor, heading, line_length);
-        let (segment, next_heading, next_cursor) = clothoid(r, cursor, heading, clothoid_length);
+        let (segment, next_heading, next_cursor) = section(r, cursor, heading, section_length);
         segments.push(segment);
         cursor = next_cursor;
         heading = next_heading;
@@ -138,30 +235,48 @@ fn welded_chain(r: f64, line_length: f64, clothoid_length: f64, pairs: usize) ->
     }
 }
 
-fn main() {
-    // The demo fixtures the API documents stage.
-    let (entities, _) = build_display_entities(&commission_demo_plan_chain(), 1e-3).expect("demo plan stages");
-    assert!(!entities.is_empty());
-    let _ = build_display_entities(&commission_demo_profile_chain(), 1e-3).expect("demo profile stages");
+fn stage_and_time(chain: &ParametricChain, label: &str) -> (Duration, usize) {
+    let (entities, _) =
+        build_display_entities(chain, 1e-3).unwrap_or_else(|e| panic!("{label}: {e}"));
+    let count = entities.len();
+    for _ in 0..WARMUP {
+        black_box(build_display_entities(chain, 1e-3))
+            .unwrap_or_else(|e| panic!("{label} warmup: {e}"));
+    }
+    let mut total = Duration::ZERO;
+    for _ in 0..RUNS {
+        let start = Instant::now();
+        black_box(build_display_entities(chain, 1e-3))
+            .unwrap_or_else(|e| panic!("{label}: {e}"));
+        total += start.elapsed();
+    }
+    (total / RUNS as u32, count)
+}
 
+fn stage_once(chain: &ParametricChain, label: &str) -> (Duration, usize) {
+    let (entities, _) =
+        build_display_entities(chain, 1e-3).unwrap_or_else(|e| panic!("{label}: {e}"));
+    let count = entities.len();
+    for _ in 0..WARMUP {
+        black_box(build_display_entities(chain, 1e-3))
+            .unwrap_or_else(|e| panic!("{label} warmup: {e}"));
+    }
+    let start = Instant::now();
+    black_box(build_display_entities(chain, 1e-3))
+        .unwrap_or_else(|e| panic!("{label}: {e}"));
+    (start.elapsed(), count)
+}
+
+fn main() {
     // Budget 1: the 50-segment welded chain (under the cap), < 5 ms.
-    let chain = welded_chain(-3000.0, 2.0, 40.0, WELDED_PAIRS);
+    let chain = welded_chain(-3000.0, 2.0, 40.0, WELDED_PAIRS, spiral_section);
+    let staging_mean = stage_and_time(&chain, "welded chain").0;
     let (entities, _) = build_display_entities(&chain, 1e-3).expect("welded chain stages");
     let entity_count = entities.len();
     assert!(
-        entity_count <= ocs_plugin_api::host::MAX_PLUGIN_LIVE_ENTITIES,
+        entity_count <= MAX_PLUGIN_LIVE_ENTITIES,
         "fixture must fit under the live cap, got {entity_count}"
     );
-    for _ in 0..WARMUP {
-        black_box(build_display_entities(&chain, 1e-3)).expect("warmup stages");
-    }
-    let mut staging_total = Duration::ZERO;
-    for _ in 0..RUNS {
-        let start = Instant::now();
-        black_box(build_display_entities(&chain, 1e-3)).expect("stages");
-        staging_total += start.elapsed();
-    }
-    let staging_mean = staging_total / RUNS as u32;
     println!("staging: welded {WELDED_PAIRS}-pair chain -> {entity_count} display entities");
     println!("staging: mean {staging_mean:?} over {RUNS} runs (budget < 5 ms)");
     assert!(
@@ -170,18 +285,14 @@ fn main() {
     );
 
     // Budget 2: the chord-heavy fixture (~200 entities at 1e-3).
-    let chord_chain = welded_chain(-300.0, 2.0, 60.0, CHORD_PAIRS);
-    let (entities, _) = build_display_entities(&chord_chain, 1e-3).expect("chord-heavy chain stages");
-    let chord_count = entities.len();
-    for _ in 0..WARMUP {
-        black_box(build_display_entities(&chord_chain, 1e-3)).expect("warmup stages");
-    }
-    let start = Instant::now();
-    black_box(build_display_entities(&chord_chain, 1e-3)).expect("stages");
-    println!("staging (chord-heavy {CHORD_PAIRS}-pair, {chord_count} entities): {:?}", start.elapsed());
+    let chord_chain = welded_chain(-300.0, 2.0, 60.0, CHORD_PAIRS, spiral_section);
+    let (elapsed, chord_count) = stage_once(&chord_chain, "chord-heavy chain");
+    println!(
+        "staging (chord-heavy {CHORD_PAIRS}-pair, {chord_count} entities): {elapsed:?}"
+    );
 
     // Budget 3: sample latency under 1 us.
-    let total: f64 = chain.segments.iter().map(|s| s.length).sum();
+    let total: f64 = chain.segments.iter().map(|s| s.def.length).sum();
     for _ in 0..WARMUP {
         black_box(sample_chain(&chain, total * 0.5).unwrap());
     }
@@ -199,71 +310,67 @@ fn main() {
     println!("sample: digest {acc:.3} over {total} m of chain");
     black_box(acc);
 
-    // Budget 5: the Declared curvature-law head — the plugin-declared ramp
-    // executed by the generic integrator. The same staging budget as the
-    // hard-coded blends: the Declared head is data, the kernel is shared.
-    let declared_chain = declared_blend_chain();
-    let (entities, _) =
-        build_display_entities(&declared_chain, 1e-3).expect("declared chain stages");
-    let declared_count = entities.len();
-    for _ in 0..WARMUP {
-        black_box(build_display_entities(&declared_chain, 1e-3)).expect("warmup stages");
-    }
-    let mut declared_total = Duration::ZERO;
-    for _ in 0..RUNS {
-        let start = Instant::now();
-        black_box(build_display_entities(&declared_chain, 1e-3)).expect("stages");
-        declared_total += start.elapsed();
-    }
+    // Budget 5: the SAMPLED tier — the stage-time cumulative table for
+    // table laws: the staging budget for dense sampled tables, then the
+    // grip tier below.
+    let sampled_chain = welded_sampled_chain(-300.0, 2.0, 60.0, 2);
+    let (sampled_mean, sampled_count) = stage_and_time(&sampled_chain, "sampled chain");
     println!(
-        "staging (declared ramp, {declared_count} entities): mean {:?} over {RUNS} runs",
-        declared_total / RUNS as u32
+        "staging (sampled tables, {sampled_count} entities): mean {sampled_mean:?} over {RUNS} runs"
     );
-    black_box(declared_total);
+    black_box(sampled_mean);
 
     // Grip-edit review (the drag-policy decision input).
     //
     // Per-move cost of HOST-LOCAL re-derivation for a grip edit: the drag
-    // revises one declared parameter (the section's end radius) and the host
-    // re-derives the live display set per coalesced cursor move — no IPC —
-    // instead of the plugin streaming preview/live-entity geometry per move
-    // (the v12 semantics). Two species at the derivation-cost extremes:
+    // revises the section's end curvature through its own ramp data and
+    // the host re-derives the live display set per coalesced cursor move
+    // — no IPC — instead of the plugin streaming preview/live-entity
+    // geometry per move (the v12 semantics). The ramp arms at the
+    // derivation-cost extremes:
     //
-    // - CLOTHOID: the transcendental case — every move re-runs the
-    //   Fresnel/GL integration and the measured-deviation chord refinement.
-    // - CUBIC: the exact degree-3 Bezier spline carrier — closed-form
-    //   control points, the cheapest possible per-move re-derivation.
+    // - the linear-curvature ramp: the spiral case — every move re-runs
+    //   the Gauss-Legendre integration and the measured-deviation chord
+    //   refinement;
+    // - the constant-curvature ramp: the exact arc carrier — one closed
+    //   entity, the cheapest possible per-move re-derivation;
+    // - the dense sampled table (the new cumulative tier): the moves drag
+    //   the table's END value; the precomputed slot-integral table keeps
+    //   the re-derivation's integral reads to a lookup + one exacting
+    //   tail.
     //
-    // The point-projection tier (`sample_chain` at the cursor's station) is
-    // measured on the same dragged design: the cheap preview without the
-    // materialized entity set.
-    for (label, species, base_r) in [
+    // The point-projection tier (`sample_chain` at the cursor's station)
+    // is measured on the same dragged design.
+    let base_r = -300.0f64;
+    for (label, ramp_at) in [
         (
-            "clothoid",
-            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Clothoid),
-            -300.0f64,
+            "spiral ramp (measured chords)",
+            Box::new(|r: f64| ramp_linear(0.0, 1.0 / r)) as Box<dyn Fn(f64) -> Ramp>,
         ),
         (
-            "bezier-carrier cubic",
-            ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Cubic),
-            -300.0f64,
+            "constant ramp (exact arc)",
+            Box::new(|r: f64| ramp_const(1.0 / r)) as Box<dyn Fn(f64) -> Ramp>,
+        ),
+        (
+            "sampled table (cumulative tier)",
+            Box::new(|r: f64| sampled_cosine_kappa(r, 257)) as Box<dyn Fn(f64) -> Ramp>,
         ),
     ] {
-        let mut chain = grip_edit_chain(species, base_r);
-        let (entities, _) =
-            build_display_entities(&chain, 1e-3).expect("the grip fixture stages");
-        let per_move_count = entities.len();
+        let mut chain = grip_edit_chain(ramp_at(base_r));
+        let (per_move_count, _) = stage_once(&chain, &format!("{label} fixture"));
+        let _ = per_move_count;
         // (a) Full re-derivation per move; the drag sweeps +-3% around the
         // base end radius, deterministic.
         let mut build_total = Duration::ZERO;
         let mut digest = 0.0f64;
         for m in 0..GRIP_MOVES {
             let t = m as f64 / GRIP_MOVES as f64;
-            chain.segments[1].end_radius = base_r * (1.0 + 0.03 * (2.0 * t - 1.0));
+            let r = base_r * (1.0 + 0.03 * (2.0 * t - 1.0));
+            chain.segments[1].def.ramp = ramp_at(r);
             let start = Instant::now();
             black_box(build_display_entities(&chain, 1e-3).expect("move re-derivation stages"));
             build_total += start.elapsed();
-            digest += (chain.segments[1].end_radius + 1.0) * 0.001;
+            digest += (r + 1.0) * 0.001;
         }
         let per_move = build_total / GRIP_MOVES as u32;
         assert!(
@@ -271,14 +378,15 @@ fn main() {
             "grip-edit re-derivation blew the frame budget: {per_move:?} per move"
         );
         println!(
-            "grip_edit ({label}): {GRIP_MOVES} host-local re-derivations, {per_move_count} \
-             entities per move, mean {per_move:?} per move (60 fps frame = 16.7 ms)",
+            "grip_edit ({label}): {GRIP_MOVES} host-local re-derivations, mean {per_move:?} \
+             per move (60 fps frame = 16.7 ms)",
         );
         // (b) The projection tier on the same dragged design.
         let mut sample_total = Duration::ZERO;
         for m in 0..GRIP_MOVES {
             let t = m as f64 / GRIP_MOVES as f64;
-            chain.segments[1].end_radius = base_r * (1.0 + 0.03 * (2.0 * t - 1.0));
+            let r = base_r * (1.0 + 0.03 * (2.0 * t - 1.0));
+            chain.segments[1].def.ramp = ramp_at(r);
             let start = Instant::now();
             black_box(sample_chain(&chain, 30.0).unwrap());
             sample_total += start.elapsed();
@@ -290,91 +398,28 @@ fn main() {
     }
 }
 
-/// A {line, species} plan chain with the species section carrying its end
-/// radius as the dragged parameter. The species section is the LAST segment:
-/// no downstream seam restates its end, so the re-derivation cost is the
-/// pure per-species derivation.
-/// A plan segment of the given species at (start, length), straight entry.
-fn plan_species_segment(
-    species: HorizontalSegmentSpecies,
-    start: [f64; 2],
-    length: f64,
-) -> ParametricSegment {
-    ParametricSegment {
-        species: ParametricSpecies::Horizontal(species),
-        start_point: start,
-        start_direction: 0.0,
-        start_gradient: 0.0,
-        end_gradient: 0.0,
-        length,
-        start_radius: 0.0,
-        end_radius: 0.0,
-        end_curvature: 0.0,
-        bank_change: 0.0,
-        gravity_height: 0.0,
-    }
-}
-
-/// The declared-law fixture: a straight entry into two declared blends
-/// (the Cosine half-wave and a custom piecewise ramp), seamed by the
-/// engine's own sampling.
-fn declared_blend_chain() -> ParametricChain {
-    let mut knots = [(0.0, 0.0); 6];
-    knots[0] = (0.0, 0.0);
-    knots[1] = (0.5, 1.0);
-    knots[2] = (1.0, 1.0);
-    let mut cosine = plan_species_segment(
-        HorizontalSegmentSpecies::Declared(DeclaredKappaRamp::Cosine),
-        [60.0, 0.0],
-        60.0,
-    );
-    cosine.end_curvature = 1.0 / -300.0;
-    let front = ParametricChain {
-        plane: ParametricPlane::Plan,
-        segments: vec![cosine.clone()],
-        layer: String::new(),
-    };
-    let joint = sample_chain(&front, 60.0).unwrap().unwrap();
-    let mut piecewise = plan_species_segment(
-        HorizontalSegmentSpecies::Declared(DeclaredKappaRamp::Piecewise { count: 3, knots }),
-        joint.point,
-        60.0,
-    );
-    piecewise.start_direction = joint.direction[1].atan2(joint.direction[0]);
-    piecewise.end_curvature = 1.0 / -300.0;
-    ParametricChain {
-        plane: ParametricPlane::Plan,
-        segments: vec![cosine, piecewise],
-        layer: String::new(),
-    }
-}
-
-fn grip_edit_chain(species: ParametricSpecies, end_radius: f64) -> ParametricChain {
+/// A {line, section} plan chain with the 60 m section carrying the ramp
+/// as the dragged parameter. The section is the LAST segment: no
+/// downstream seam restates its end, so the re-derivation cost is the
+/// pure per-ramp derivation.
+fn grip_edit_chain(ramp: Ramp) -> ParametricChain {
     let mut segments = vec![ParametricSegment {
-        species: ParametricSpecies::Horizontal(HorizontalSegmentSpecies::Line),
+        def: CurveSegmentDef {
+            length: 2.0,
+            ramp: ramp_const(0.0),
+            cross_slope: None,
+        },
         start_point: [0.0; 2],
         start_direction: 0.0,
-        start_gradient: 0.0,
-        end_gradient: 0.0,
-        length: 2.0,
-        start_radius: 0.0,
-        end_radius: 0.0,
-        end_curvature: 0.0,
-        bank_change: 0.0,
-        gravity_height: 0.0,
     }];
     segments.push(ParametricSegment {
-        species,
+        def: CurveSegmentDef {
+            length: 60.0,
+            ramp,
+            cross_slope: None,
+        },
         start_point: stepped([0.0; 2], 0.0, 2.0),
         start_direction: 0.0,
-        start_gradient: 0.0,
-        end_gradient: 0.0,
-        length: 60.0,
-        start_radius: 0.0,
-        end_radius,
-        end_curvature: 0.0,
-        bank_change: 0.0,
-        gravity_height: 0.0,
     });
     ParametricChain {
         plane: ParametricPlane::Plan,
