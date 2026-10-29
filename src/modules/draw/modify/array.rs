@@ -958,10 +958,18 @@ impl CadCommand for ArrayPathCommand {
             defaults::set_array_assoc(f64::from(u8::from(self.associative)));
             return None;
         }
-        if matches!(text.trim().to_ascii_uppercase().as_str(), "M" | "METHOD" | "_M")
-            && matches!(self.step, PathStep::Count { .. } | PathStep::Spacing { .. })
-        {
-            self.measure = !self.measure;
+        // M switches the method; DIVIDE / MEASURE name it, for scripts that
+        // cannot know which one was used last.
+        let method = match text.trim().to_ascii_uppercase().as_str() {
+            "M" | "METHOD" | "_M" => Some(!self.measure),
+            "DIVIDE" | "_DIVIDE" => Some(false),
+            "MEASURE" | "_MEASURE" => Some(true),
+            _ => None,
+        };
+        if let Some(measure) = method.filter(|_| {
+            matches!(self.step, PathStep::Count { .. } | PathStep::Spacing { .. })
+        }) {
+            self.measure = measure;
             defaults::set_array_path_measure(f64::from(u8::from(self.measure)));
             let path_entity = match std::mem::replace(&mut self.step, PathStep::SelectPath) {
                 PathStep::Count { path_entity } | PathStep::Spacing { path_entity } => path_entity,
