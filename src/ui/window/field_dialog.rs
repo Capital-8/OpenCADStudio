@@ -1614,7 +1614,7 @@ fn number_format_rows(state: &FieldDialogState) -> Element<'_, Message> {
     let decimals: Vec<Pick> = DECIMAL_SEPARATORS
         .iter()
         .enumerate()
-        .map(|(i, (n, c))| Pick(i, separator(*n, *c)))
+        .map(|(i, (n, c))| Pick(i, separator(n, *c)))
         .collect();
     let thousands: Vec<Pick> = THOUSANDS_SEPARATORS
         .iter()
@@ -1622,7 +1622,7 @@ fn number_format_rows(state: &FieldDialogState) -> Element<'_, Message> {
         .map(|(i, (n, c))| {
             Pick(
                 i,
-                c.map_or_else(|| t!(*n).into_owned(), |c| separator(*n, c)),
+                c.map_or_else(|| t!(*n).into_owned(), |c| separator(n, c)),
             )
         })
         .collect();
