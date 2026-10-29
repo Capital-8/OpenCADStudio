@@ -4646,8 +4646,14 @@ fn moved_text_reach(style: &DimStyle, text_height: f64, dim_scale: f64) -> f64 {
     (style.dimasz * dim_scale + gap).max(text_height * 0.5 + gap + style.dimexe * dim_scale)
 }
 
-/// DIMTMOVE 1 text placed on a leader off an angular dimension, which reads
-/// horizontally.
+/// DIMTMOVE 1 angular text the user placed.
+fn angular_text_moved(dim: &Dimension, style: Option<&DimStyle>) -> bool {
+    style.is_some_and(|s| s.dimtmove == 1)
+        && matches!(dim, Dimension::Angular2Ln(_) | Dimension::Angular3Pt(_))
+        && dim.base().text_user_positioned
+}
+
+/// DIMTMOVE 1 angular text placed off its arc, on a leader.
 fn angular_text_on_leader(
     dim: &Dimension,
     style: Option<&DimStyle>,
@@ -4783,7 +4789,7 @@ fn dimtmove_one_text(
     let angle = if turned {
         base.horizontal_direction
     } else {
-        dimension_text_rotation(dim, style, document)
+        dimension_text_rotation(dim, style)
     };
     let u = [angle.cos(), angle.sin()];
     let v = [-u[1], u[0]];
@@ -5011,7 +5017,7 @@ fn arc_length_symbol_points(
     }
 
     let position = dimension_text_pos_f64(dim, style, text_height, dim_scale, document);
-    let rotation = dimension_text_rotation(dim, style, document);
+    let rotation = dimension_text_rotation(dim, style);
     let (sin_rotation, cos_rotation) = rotation.sin_cos();
     let stack_scale = style.map(dimtfac_or_one).unwrap_or(1.0);
     let text_width = text_cells(&value, stack_scale) * text_height * CELL_WIDTH;
@@ -5101,7 +5107,7 @@ fn dimension_text_layout(
         // have to clear the whole block.
         half_height: dimension_text_extent_height(dimension, style, text_height) as f32 * 0.5,
         padding: gap,
-        rotation: dimension_text_rotation(dimension, style, document),
+        rotation: dimension_text_rotation(dimension, style),
     });
     let outside = dimension_text_is_outside(dimension, style);
     let horizontal =
@@ -6817,7 +6823,7 @@ fn dimension_text_entity(
     };
     let base = dim.base();
 
-    let rotation = dimension_text_rotation(dim, style, Some(document));
+    let rotation = dimension_text_rotation(dim, style);
 
     let style_name = dimension_text_style_name(dim, style, document);
 
@@ -6922,11 +6928,7 @@ fn attachment_to_text_align(
 /// DIMTIH/DIMTOH force-horizontal (along horizontal_direction), else the
 /// natural dim-line angle (+90° for DIMJUST 3/4). Shared by the live text entity and
 /// the bake so a reloaded dimension's text reads at the same angle. (#181)
-fn dimension_text_rotation(
-    dim: &Dimension,
-    style: Option<&DimStyle>,
-    document: Option<&Document>,
-) -> f64 {
+fn dimension_text_rotation(dim: &Dimension, style: Option<&DimStyle>) -> f64 {
     let base = dim.base();
     let dimtih = style.map(|s| s.dimtih).unwrap_or(false);
     let dimtoh = style.map(|s| s.dimtoh).unwrap_or(false);
@@ -6936,7 +6938,9 @@ fn dimension_text_rotation(
         base.text_rotation
     } else if matches!(dim, Dimension::Ordinate(_)) {
         dimension_text_natural_rotation(dim)
-    } else if angular_text_on_leader(dim, style, document) {
+    } else if angular_text_moved(dim, style) {
+        // DIMTMOVE 1 angular text a user placed reads horizontally, on its
+        // arc as on a leader (measured).
         base.horizontal_direction
     } else if (outside && dimtoh) || (!outside && dimtih) {
         // Text forced horizontal reads along the dimension's horizontal
@@ -7122,7 +7126,7 @@ pub(crate) fn dynamic_dimension_lock_anchor(
     let pos = dimension_text_pos_f64(dim, style, text_height, dim_scale, Some(document));
     // The text angle the renderer draws (DIMTIH/DIMTOH overrides make a
     // dynamic dimension's text horizontal).
-    let (sr, cr) = dimension_text_rotation(dim, style, Some(document)).sin_cos();
+    let (sr, cr) = dimension_text_rotation(dim, style).sin_cos();
     let outward = Vector3::new(cr, sr, 0.0);
     // A glyph-sized gap keeps the lock clear of the last digit.
     let reach = half_width + text_height * 0.9;
