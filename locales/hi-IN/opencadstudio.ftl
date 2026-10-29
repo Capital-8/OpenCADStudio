@@ -6244,6 +6244,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = पाठ को हमेशा विस्तार रेखाओं के बीच रखें
     .angular-dimensions = कोणीय माप
     .arc-length-symbol = चाप लंबाई चिह्न

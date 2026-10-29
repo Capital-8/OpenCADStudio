@@ -6255,6 +6255,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = Mantieni sempre il testo tra le linee di estensione
     .angular-dimensions = Dimensioni angolari
     .arc-length-symbol = Simbolo della lunghezza dell'arco

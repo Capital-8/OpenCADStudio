@@ -6263,6 +6263,7 @@ ui =
     .window-embed-image-in-drawing = Nhúng hình ảnh (trong bản vẽ)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = Luôn giữ chữ giữa các đường gióng
     .angular-dimensions = Kích thước góc
     .arc-length-symbol = Ký hiệu độ dài cung

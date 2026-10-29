@@ -6253,6 +6253,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = Vždy ponechte text mezi vynášecími řádky
     .angular-dimensions = Úhlové rozměry
     .arc-length-symbol = Symbol délky oblouku

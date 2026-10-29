@@ -1172,6 +1172,7 @@ impl OpenCADStudio {
             .unwrap_or_default();
         self.load_dimstyle_bufs(i);
         self.active_modal = Some(crate::app::ModalKind::DimStyle);
+        self.dimstyle_user_arrow = None;
         self.style_stage_begin();
         Task::none()
     }
@@ -1296,6 +1297,12 @@ impl OpenCADStudio {
         if self.selected_dimstyle_is_read_only() {
             return Task::none();
         }
+        // User Arrow… opens the list of the drawing's blocks for that field.
+        if value == crate::tr!("dimstyle", "user-arrow") {
+            self.dimstyle_user_arrow = Some(field);
+            return Task::none();
+        }
+        self.dimstyle_user_arrow = None;
         let i = self.active_tab;
         let name = self.dimstyle_selected.clone();
         let is_lt = matches!(

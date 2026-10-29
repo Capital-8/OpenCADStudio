@@ -6239,6 +6239,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = 始终将文字置于尺寸界线之间
     .angular-dimensions = 角度标注
     .arc-length-symbol = 弧长符号

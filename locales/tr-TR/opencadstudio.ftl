@@ -6179,6 +6179,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = Kullanıcı Oku…
     .keep-text-between-extension-lines = Metni her zaman uzatma çizgileri arasında tut
     .angular-dimensions = Açısal ölçüler
     .arc-length-symbol = Yay uzunluğu simgesi

@@ -6240,6 +6240,7 @@ ui =
     .snap-override-none-next-pick-only = Ideiglenes tárgyraszter: Nincs (csak a következő pontra).
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = Szöveg mindig a segédvonalak között
     .angular-dimensions = Szögméretek
     .arc-length-symbol = Ívhossz szimbólum

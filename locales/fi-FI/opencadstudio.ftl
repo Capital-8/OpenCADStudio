@@ -6253,6 +6253,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = Pidä teksti aina jatkorivien välissä
     .angular-dimensions = Kulmamitat
     .arc-length-symbol = Kaaren pituuden symboli

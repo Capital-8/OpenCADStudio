@@ -1885,6 +1885,8 @@ pub(super) struct OpenCADStudio {
     // ── DimStyle Dialog ───────────────────────────────────────────────────
     /// Name of the style currently shown in the dialog.
     dimstyle_selected: String,
+    /// The arrowhead field whose User Arrow block list is open.
+    dimstyle_user_arrow: Option<&'static str>,
     /// Which colour field currently has its expanded palette open (if any).
     ds_color_open: Option<DsField>,
     /// Active property group in the dimension style manager.
@@ -5969,6 +5971,7 @@ impl OpenCADStudio {
             mls_block_scale_z: String::new(),
             // DimStyle dialog
             dimstyle_selected: "Standard".to_string(),
+            dimstyle_user_arrow: None,
             ds_color_open: None,
             dimstyle_tab: 0,
             dimstyle_compare: String::new(),

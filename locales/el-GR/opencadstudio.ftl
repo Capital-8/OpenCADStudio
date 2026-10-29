@@ -6256,6 +6256,7 @@ ui =
     .window-embed-image-in-drawing = Embed Image (in drawing)
 
 dimstyle =
+    .user-arrow = User Arrow…
     .keep-text-between-extension-lines = Το κείμενο να παραμένει πάντα μεταξύ των γραμμών προέκτασης
     .angular-dimensions = Γωνιακές διαστάσεις
     .arc-length-symbol = Σύμβολο μήκους τόξου
