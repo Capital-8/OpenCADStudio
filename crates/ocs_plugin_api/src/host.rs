@@ -2090,8 +2090,9 @@ pub struct PluginClassInstance {
     pub schema_version: u32,
     /// The host-evaluated display design.
     pub design: PluginDisplayDescriptor,
-    /// The display carrier tolerance (chain designs: the chord tolerance of
-    /// the transcendental species, seams keep the record tolerances).
+    /// The display carrier tolerance (chain designs: the chord tolerance
+    /// for the table-law ramps; the record-model seam tolerances apply
+    /// regardless).
     #[serde(default)]
     pub tolerance: f64,
     /// Layer for the staged display set; empty = the host's default layer.

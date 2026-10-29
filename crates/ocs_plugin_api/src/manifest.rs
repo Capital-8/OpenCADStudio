@@ -61,11 +61,14 @@
 /// `list_xrecords_with_entries` — one frame per pass, not per record).
 ///
 /// **API v14** (additive — one step over v13; the branch's arc layers were
-/// squashed into it): `stage_parametric_chain` — a declared IFC 4.3
-/// alignment chain (species + parameters) turns into reference-only display
-/// geometry staged by the host (exact Line/Arc/spline carriers for the
-/// exactly-representable species, curvature-bounded chords within the
-/// declared tolerance for the transcendental ones), audited seam-to-seam
+/// squashed into it, and the envelopes reshaped IN PLACE before release —
+/// api_version stays 14): `stage_parametric_chain` — a declared alignment
+/// chain whose driving ramps are declared DATA (the vocabulary any record
+/// model restates its laws with) turns into reference-only display
+/// geometry staged by the host (exact Line/Arc carriers for the constant
+/// classes, the exact from-end-states Hermite for the profile's
+/// at-most-quadratic polynomial slope class, measured chords within the
+/// declared tolerance for every table law), audited seam-to-seam
 /// before anything is staged and capped by
 /// [`MAX_PLUGIN_LIVE_ENTITIES`](crate::host::MAX_PLUGIN_LIVE_ENTITIES); and
 /// `sample_parametric` — the same engine exposed as a pure placement
