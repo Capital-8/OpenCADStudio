@@ -1743,6 +1743,24 @@ pub trait HostApi {
     ) -> Result<Vec<Handle>, String> {
         Err("Plugin class instance staging is not supported by this host".to_owned())
     }
+
+    /// Read a class instance's declared parameter rows (API v14, additive —
+    /// the read half of the session's properties pair, carried by
+    /// `PluginRequest::PluginClassInstanceProperties` /
+    /// `PluginResponse::PluginClassInstancePropertiesResult`). The identity
+    /// stamp (the entity's XDATA class key) resolves the session-registered
+    /// class, the design-record linkage resolves under the named-object
+    /// dictionary, and every declared parameter reads its (name, value)
+    /// entry pair. Values print exactly what the record row carries — the
+    /// host never invents units or semantics for a name or kind it does not
+    /// declare. Strict on purpose: a missing entity, a broken linkage or a
+    /// stale schema refuses — the caller re-stages.
+    fn plugin_class_instance_properties(
+        &self,
+        _handle: Handle,
+    ) -> Result<Vec<PluginClassParameterRow>, String> {
+        Err("Plugin class instance properties are not supported by this host".to_owned())
+    }
 }
 
 /// **Parametric-chain staging types (API v14, additive).**
@@ -2082,6 +2100,24 @@ pub enum PluginClassParameterKind {
     Integer,
     /// Free text; the record row carries an XRecord string.
     Text,
+}
+
+/// One read row of a class instance's declared parameters (API v14,
+/// additive; the wire carrier of
+/// [`HostApi::plugin_class_instance_properties`]). The value is exactly
+/// what the record row carries — only the declared kind's own reading,
+/// never a unit or semantic conversion; `None` = the record does not
+/// carry this parameter's pair yet (the row renders the declaration).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginClassParameterRow {
+    /// The parameter's declared name.
+    pub name: String,
+    /// The declared kind the row prints under.
+    pub value_kind: PluginClassParameterKind,
+    /// Whether host property surfaces may write this row.
+    pub editable: bool,
+    /// The record row's own printed value; `None` when absent.
+    pub value: Option<String>,
 }
 
 /// One staged instance of a registered plugin class (API v14): identity plus

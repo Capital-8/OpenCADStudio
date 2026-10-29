@@ -611,6 +611,48 @@ mod tests {
     }
 
     #[test]
+    fn class_instance_properties_request_and_response_roundtrip() {
+        // The read half of the session's properties pair rides the wire
+        // additively: a stamped handle in, the declared rows (or the strict
+        // refusal) out.
+        let bytes = bincode::serialize(&PluginRequest::PluginClassInstanceProperties {
+            handle: codec::Handle::new(11),
+        })
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginRequest>(&bytes).unwrap(),
+            PluginRequest::PluginClassInstanceProperties { handle } if handle == codec::Handle::new(11))
+        );
+        let bytes = bincode::serialize(&PluginResponse::PluginClassInstancePropertiesResult(Ok(
+            vec![crate::host::PluginClassParameterRow {
+                name: "peak_gradient".to_string(),
+                value_kind: crate::host::PluginClassParameterKind::Real,
+                editable: true,
+                value: Some("0.09".to_string()),
+            }],
+        )))
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::PluginClassInstancePropertiesResult(Ok(rows))
+                if rows.len() == 1
+                    && rows[0].name == "peak_gradient"
+                    && rows[0].value_kind == crate::host::PluginClassParameterKind::Real
+                    && rows[0].editable
+                    && rows[0].value.as_deref() == Some("0.09"))
+        );
+        let bytes = bincode::serialize(&PluginResponse::PluginClassInstancePropertiesResult(
+            Err("entity carries the class stamp without its schema version".to_owned()),
+        ))
+        .unwrap();
+        assert!(
+            matches!(bincode::deserialize::<PluginResponse>(&bytes).unwrap(),
+            PluginResponse::PluginClassInstancePropertiesResult(Err(msg))
+                if msg == "entity carries the class stamp without its schema version")
+        );
+    }
+
+    #[test]
     fn plugin_notification_roundtrip() {
         let frame = PluginToHostV4::Notification(NotificationEnvelope {
             command_id: None,

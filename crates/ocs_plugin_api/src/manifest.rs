@@ -94,7 +94,13 @@
 /// records' truth; the host renders and writes only what the declaration
 /// spells, never inventing semantics for a name or kind it does not know.
 /// The host's properties panel rides the same core for selections whose
-/// XDATA carries a registered class key. The Declared species head extends
+/// XDATA carries a registered class key, and the read half crosses the
+/// wire additively (`PluginRequest::PluginClassInstanceProperties` /
+/// `PluginResponse::PluginClassInstancePropertiesResult` with the declared
+/// [`PluginClassParameterRow`](crate::host::PluginClassParameterRow) rows —
+/// appended at the END of the request/response enums; the python `ocs`
+/// surface exposes it as `plugin_class_instance_properties`). The Declared
+/// species head extends
 /// the set WITHOUT hard-coding: a segment declares its normalized
 /// curvature ramp ([`DeclaredKappaRamp`](crate::host::DeclaredKappaRamp) —
 /// the vocabulary the IFC blends restate exactly, plus a bounded

@@ -1200,6 +1200,22 @@ impl HostApi for V4PluginHostApi {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn plugin_class_instance_properties(
+        &self,
+        handle: Handle,
+    ) -> Result<Vec<crate::host::PluginClassParameterRow>, String> {
+        // API v14: a pure read (the record row stays the values' truth):
+        // no document mutation, no cache effect.
+        match self.request(PluginRequest::PluginClassInstanceProperties { handle }) {
+            Ok(PluginResponse::PluginClassInstancePropertiesResult(result)) => result,
+            Ok(PluginResponse::Error(error)) => Err(error),
+            Ok(other) => Err(format!(
+                "unexpected class instance properties response: {other:?}"
+            )),
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 #[cfg(test)]

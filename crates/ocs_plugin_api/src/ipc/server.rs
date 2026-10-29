@@ -246,5 +246,10 @@ pub fn handle_plugin_request(
                 &instance,
             ))
         }
+        PluginClassInstanceProperties { handle } => {
+            PluginResponse::PluginClassInstancePropertiesResult(
+                host.plugin_class_instance_properties(handle),
+            )
+        }
     }
 }

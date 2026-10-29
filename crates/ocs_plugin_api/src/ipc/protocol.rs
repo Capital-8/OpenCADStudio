@@ -327,6 +327,13 @@ pub enum PluginRequest {
     StagePluginClassInstance {
         instance: crate::host::PluginClassInstance,
     },
+    /// V14 (additive): read a registered class instance's declared
+    /// parameter rows — the read half of the session's properties pair
+    /// across the wire (the identity stamp resolves; the record row stays
+    /// the values' truth).
+    PluginClassInstanceProperties {
+        handle: Handle,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -399,6 +406,11 @@ pub enum PluginResponse {
     RegisterPluginClassResult(Result<(), String>),
     /// V15 (additive): handles of the staged instance display set.
     StagePluginClassInstanceResult(Result<Vec<Handle>, String>),
+    /// V14 (additive): a class instance's declared parameter rows (the
+    /// read half of the session's properties pair).
+    PluginClassInstancePropertiesResult(
+        Result<Vec<crate::host::PluginClassParameterRow>, String>,
+    ),
 }
 
 /// Messages sent from the host to the plugin runner.

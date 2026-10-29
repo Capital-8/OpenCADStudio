@@ -676,7 +676,7 @@ Which surface carries what:
 | Viewport automation | `click`, `pointer`, `getpoint`, `user_select`, `view_focus`, `capture` | — (a plugin's grip events are its gestures) |
 | Reference-only designation | — | `set_reference_only` |
 | Parametric chain staging / sampling (v14) | — (`query` reads the staged entities) | `stage_parametric_chain` / `sample_parametric` |
-| Plugin class objects | — (future: a class/instance browser view) | `register_plugin_class` / `stage_plugin_class_instance` |
+| Plugin class objects | — (future: a class/instance browser view) | `register_plugin_class` / `stage_plugin_class_instance`; the instance's declared rows read across the wire (`plugin_class_instance_properties`, the python `ocs` surface names it too) |
 | Files | `new/open/save/save_verified/wblock/plot` | `document_path`, tab lifecycle |
 
 Semantic traps worth knowing before writing a consumer on either side:

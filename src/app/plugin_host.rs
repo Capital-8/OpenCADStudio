@@ -4,7 +4,9 @@ use std::any::Any;
 
 use codec::tables::AppId;
 use codec::xdata::ExtendedDataRecord;
-use ocs_plugin_api::host::{Document, EntityType, Handle, HostApi, HostSettingValue};
+use ocs_plugin_api::host::{
+    Document, EntityType, Handle, HostApi, HostSettingValue, PluginClassParameterRow,
+};
 use ocs_plugin_api::shm::{DocumentSnapshotStore, DocumentViewData};
 
 use super::OpenCADStudio;
@@ -3693,15 +3695,13 @@ impl<'a> HostSession<'a> {
     /// registry, the design-record linkage resolves under the NOD (root
     /// pass, then one sub-dictionary level), and every declared parameter
     /// reads its (name, value) entry pair. Values print exactly what the
-    /// record row carries — the host never invents units or semantics for a
+    /// record row carries â€” the host never invents units or semantics for a
     /// name or kind it does not declare. Strict on purpose (a broken
-    /// linkage or a stale stamp refuses — the caller re-stages); the host's
+    /// linkage or a stale stamp refuses â€” the caller re-stages); the host's
     /// properties panel renders through the shared core directly, with the
-    /// graceful declared-rows-with-absent-values view. No wire frame
-    /// carries the read yet (the squashed v14 surface ships the properties
-    /// panel in-process); a follow-up wire pass appends it — hence the
-    /// dead-code allowance.
-    #[allow(dead_code)]
+    /// graceful declared-rows-with-absent-values view. The wire carries the
+    /// read (`PluginRequest::PluginClassInstanceProperties` served through
+    /// the [`HostApi`] impl here; the python `ocs` surface exposes it too).
     pub fn plugin_class_instance_properties(
         &self,
         handle: Handle,
@@ -3877,17 +3877,6 @@ pub(in crate::app) struct PluginClassInstanceBinding {
     pub class_id: String,
     pub parameters: Vec<ocs_plugin_api::host::PluginClassParameter>,
     pub design_record: String,
-}
-
-/// One read row of a class instance's declared parameters (API v14). The
-/// value is exactly what the record row carries — only the declared kind's
-/// own reading, never a unit or semantic conversion; `None` = the record
-/// does not carry this parameter's pair yet.
-pub(crate) struct PluginClassParameterRow {
-    pub name: String,
-    pub value_kind: ocs_plugin_api::host::PluginClassParameterKind,
-    pub editable: bool,
-    pub value: Option<String>,
 }
 
 /// Resolve an entity stamped as a plugin class instance (API v14 core,
@@ -4640,6 +4629,15 @@ impl HostApi for HostSession<'_> {
         instance: &ocs_plugin_api::host::PluginClassInstance,
     ) -> Result<Vec<Handle>, String> {
         self.stage_plugin_class_instance(plugin_id, instance)
+    }
+    fn plugin_class_instance_properties(
+        &self,
+        handle: Handle,
+    ) -> Result<Vec<ocs_plugin_api::host::PluginClassParameterRow>, String> {
+        // API v14 (additive): the wire frame serves the session's own read —
+        // the identity stamp resolves, the design record prints its declared
+        // rows. Same-name inherent call resolution: see register_plugin_class.
+        self.plugin_class_instance_properties(handle)
     }
 }
 
