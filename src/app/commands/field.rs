@@ -391,6 +391,12 @@ impl OpenCADStudio {
             FieldDialogMsg::Formula(v) => state.formula = v,
             FieldDialogMsg::FormulaFormat(k) => state.formula_format = k,
             FieldDialogMsg::FormulaPrecision(k) => state.formula_precision = k,
+            FieldDialogMsg::Conversion(v) => state.conversion = v,
+            FieldDialogMsg::Prefix(v) => state.prefix = v,
+            FieldDialogMsg::Suffix(v) => state.suffix = v,
+            FieldDialogMsg::DecimalSeparator(k) => state.decimal_separator = k,
+            FieldDialogMsg::ThousandsSeparator(k) => state.thousands_separator = k,
+            FieldDialogMsg::Coordinates(k) => state.coordinates = k,
             FieldDialogMsg::Evaluate => {}
             FieldDialogMsg::HyperlinkText(v) => state.hyperlink_text = v,
             FieldDialogMsg::HyperlinkUrl(v) => state.hyperlink_url = v,
@@ -612,5 +618,118 @@ mod tests {
             panic!("the text stays");
         };
         assert_eq!(shown.value, "4.000");
+    }
+
+    #[test]
+    fn ok_on_an_unchanged_level_mark_keeps_its_format() {
+        use codec::entities::Line;
+        use codec::types::Vector3;
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let document = &mut app.tabs[i].scene.document;
+        let line = document
+            .add_entity(EntityType::Line(Line::from_points(
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(10.0, 3.5, 0.0),
+            )))
+            .unwrap();
+        let text = document
+            .add_entity(EntityType::MText(Box::new(MText::new())))
+            .unwrap();
+        let code = "\\AcObjProp.16.2 Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pt2%pr2%ps[+,]\"";
+        crate::entities::field::set_text_field(
+            document,
+            text,
+            Some((code.to_string(), vec![line])),
+            "+3.50",
+        );
+
+        let _ = app.begin_text_edit(text);
+        assert!(app.field_dialog.is_some(), "the Field dialog opens");
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+        let (written, objects) =
+            crate::entities::field::whole_text_field(&app.tabs[i].scene.document, text).unwrap();
+        assert_eq!(written, code);
+        assert_eq!(objects, vec![line]);
+        let Some(EntityType::MText(shown)) = app.tabs[i].scene.document.get_entity(text) else {
+            panic!("the text stays");
+        };
+        assert_eq!(shown.value, "+3.50");
+    }
+
+    /// A text showing `code` for `object`, opened in the Field dialog.
+    fn editing(code: &str, object: EntityType) -> (OpenCADStudio, codec::Handle, codec::Handle) {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let document = &mut app.tabs[i].scene.document;
+        let object = document.add_entity(object).unwrap();
+        let text = document
+            .add_entity(EntityType::MText(Box::new(MText::new())))
+            .unwrap();
+        crate::entities::field::set_text_field(
+            document,
+            text,
+            Some((code.to_string(), vec![object])),
+            "",
+        );
+        let _ = app.begin_text_edit(text);
+        assert!(app.field_dialog.is_some(), "the Field dialog opens");
+        (app, text, object)
+    }
+
+    fn written(app: &OpenCADStudio, text: codec::Handle) -> (String, String) {
+        let document = &app.tabs[app.active_tab].scene.document;
+        let (code, _) = crate::entities::field::whole_text_field(document, text).unwrap();
+        let Some(EntityType::MText(shown)) = document.get_entity(text) else {
+            panic!("the text stays");
+        };
+        (code, shown.value.clone())
+    }
+
+    #[test]
+    fn an_area_in_square_centimetres_shows_in_square_metres_with_a_comma() {
+        let mut room = LwPolyline::new();
+        for (x, y) in [(0.0, 0.0), (500.0, 0.0), (500.0, 300.0), (0.0, 300.0)] {
+            room.add_point(codec::types::Vector2::new(x, y));
+        }
+        room.is_closed = true;
+        let code = "\\AcObjProp Object(%<\\_ObjIdx 0>%).Area \\f \"%lu2%pr2\"";
+        let (mut app, text, _) = editing(code, EntityType::LwPolyline(room));
+
+        let _ = app.on_field_dialog(FieldDialogMsg::Conversion("0.0001".into()));
+        let _ = app.on_field_dialog(FieldDialogMsg::Suffix(" m²".into()));
+        let _ = app.on_field_dialog(FieldDialogMsg::DecimalSeparator(1));
+        assert_eq!(app.field_dialog.as_ref().unwrap().preview, "15,00 m²");
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+
+        let (code, shown) = written(&app, text);
+        assert_eq!(
+            code,
+            "\\AcObjProp Object(%<\\_ObjIdx 0>%).Area \\f \"%lu2%pr2%ds44%ct8[0.0001]%ps[, m²]\""
+        );
+        assert_eq!(shown, "15,00 m²");
+    }
+
+    #[test]
+    fn a_level_mark_shows_the_height_with_a_plus_sign() {
+        use codec::entities::Line;
+        use codec::types::Vector3;
+        let line = Line::from_points(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 3.5, 0.0));
+        let code = "\\AcObjProp Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pr2\"";
+        let (mut app, text, _) = editing(code, EntityType::Line(line));
+        assert!(app.field_dialog.as_ref().unwrap().preview.contains(", "));
+
+        let _ = app.on_field_dialog(FieldDialogMsg::Coordinates(3));
+        let _ = app.on_field_dialog(FieldDialogMsg::Prefix("+".into()));
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+
+        let (code, shown) = written(&app, text);
+        assert_eq!(
+            code,
+            "\\AcObjProp.16.2 Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pt2%pr2%ps[+,]\""
+        );
+        assert_eq!(shown, "+3.50");
     }
 }
