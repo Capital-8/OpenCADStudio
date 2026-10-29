@@ -237,6 +237,7 @@ impl RenderConvertible for RasterImage {
                     oblique: 0.0,
                     tracking: 1.0,
                     bold: false,
+                    aci: None,
                 }),
             });
         }
