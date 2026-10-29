@@ -2899,6 +2899,10 @@ pub struct Scene {
     pub(crate) has_underlays: std::cell::Cell<Option<bool>>,
     /// Conservative hint for whether any Face3D entities exist in the document.
     pub(crate) has_face3d: std::cell::Cell<Option<bool>>,
+    /// Whether the current space holds objects the drawing saves as invisible,
+    /// keyed by `(geometry_epoch, space block)`. Read every frame by the
+    /// isolation menus, so the entity scan runs once per edit, not per frame.
+    persisted_hidden_cache: std::cell::Cell<Option<(u64, Handle, bool)>>,
     /// Cached resolved document render environment (fog and background image), keyed by (geometry_epoch, document.objects.len()).
     document_render_env_cache: RefCell<
         Option<(
@@ -3337,6 +3341,7 @@ impl Scene {
             has_dimension_associations: std::cell::Cell::new(None),
             has_underlays: std::cell::Cell::new(None),
             has_face3d: std::cell::Cell::new(None),
+            persisted_hidden_cache: std::cell::Cell::new(None),
             document_render_env_cache: RefCell::new(None),
             background_image_cache: RefCell::new(HashMap::default()),
             block_defn_cache: RefCell::new(HashMap::default()),
@@ -7212,6 +7217,79 @@ impl Scene {
         if !changes.is_empty() {
             self.bump_entities(&changes);
         }
+    }
+
+    /// Top-level objects of the current space that the drawing itself saves
+    /// as invisible (`EntityCommon::invisible`, DXF 60) — e.g. objects another
+    /// CAD program hid with HIDEOBJECTS and wrote to the file. Only objects
+    /// owned by the space count: inside block definitions (and in the block
+    /// editor) the flag drives dynamic-block visibility states.
+    pub fn persisted_hidden_objects(&self) -> Vec<Handle> {
+        if self.block_edit_block.is_some() {
+            return Vec::new();
+        }
+        let space = self.interaction_block_handle();
+        if space.is_null() {
+            return Vec::new();
+        }
+        self.document
+            .entities()
+            .filter(|entity| {
+                let common = entity.common();
+                common.invisible
+                    && !common.handle.is_null()
+                    && self.belongs_to_visible_block(common.handle, common.owner_handle, space)
+            })
+            .map(|entity| entity.common().handle)
+            .collect()
+    }
+
+    /// True when UNISOLATEOBJECTS has something to show: a session filter
+    /// from ISOLATEOBJECTS / HIDEOBJECTS, or objects saved as invisible in
+    /// the current space.
+    pub fn has_hidden_objects(&self) -> bool {
+        if self.object_isolation.is_active() {
+            return true;
+        }
+        let space = if self.block_edit_block.is_some() {
+            Handle::NULL
+        } else {
+            self.interaction_block_handle()
+        };
+        if let Some((epoch, cached_space, any)) = self.persisted_hidden_cache.get() {
+            if epoch == self.geometry_epoch && cached_space == space {
+                return any;
+            }
+        }
+        let any = !self.persisted_hidden_objects().is_empty();
+        self.persisted_hidden_cache
+            .set(Some((self.geometry_epoch, space, any)));
+        any
+    }
+
+    /// Clear the saved invisible flag of every object
+    /// [`Self::persisted_hidden_objects`] reports. Returns each changed
+    /// object's previous state for undo.
+    pub fn show_persisted_hidden_objects(&mut self) -> Vec<(Handle, Arc<EntityType>)> {
+        let mut originals = Vec::new();
+        for handle in self.persisted_hidden_objects() {
+            let Some(original) = self.document.get_entity_arc(handle) else {
+                continue;
+            };
+            if let Some(entity) = self.document.get_entity_mut(handle) {
+                entity.common_mut().invisible = false;
+                originals.push((handle, original));
+            }
+        }
+        let changes: Vec<_> = originals
+            .iter()
+            .map(|(handle, _)| (*handle, ChangeKind::Modified))
+            .collect();
+        if !changes.is_empty() {
+            self.bump_constraints_epoch();
+            self.bump_entities(&changes);
+        }
+        originals
     }
 
     /// A newly opened/replaced document starts with no session visibility.

@@ -56,6 +56,8 @@ mod measurement;
 mod model_ops;
 mod mtext_editor;
 mod navigation;
+#[cfg(test)]
+mod object_isolation_tests;
 pub(crate) mod node_graph;
 mod options_session;
 #[cfg(not(target_arch = "wasm32"))]

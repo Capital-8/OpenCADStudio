@@ -63,7 +63,7 @@ impl OpenCADStudio {
                     )
                 }),
             selected_constraint: tab.scene.selected_constraint,
-            isolation_active: tab.scene.is_isolation_active(),
+            isolation_active: tab.scene.has_hidden_objects(),
             recent_cmds: self
                 .command_line
                 .recent_commands
