@@ -1517,8 +1517,12 @@ fn save_extraction_settings(state: &DataExtractionState) -> Result<(), String> {
 
 fn load_extraction_settings(state: &mut DataExtractionState) -> Result<(), String> {
     let text = read_text_source(Path::new(state.settings_path.trim()))?;
-    let value: serde_json::Value =
-        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|error| error.to_string())?;
+    if value["drawingDataExtractor"].is_object() {
+        load_extractor_settings(state, &value);
+        return Ok(());
+    }
     state.source = match value["source"].as_str() {
         Some("currentSelection") => ExtractionSource::CurrentSelection,
         Some("currentDrawing") => ExtractionSource::CurrentDrawing,
@@ -1575,6 +1579,72 @@ fn load_extraction_settings(state: &mut DataExtractionState) -> Result<(), Strin
     state.attributed_blocks_only = flag("attributedBlocksOnly", state.attributed_blocks_only);
     state.in_use_only = flag("inUseOnly", state.in_use_only);
     Ok(())
+}
+
+/// Settings in the layout other extraction tools write: the source files
+/// under `drawingDataExtractor.settings.fileList`, the object types and the
+/// report's columns (`strGlobalName`, the same keys these settings use;
+/// flag 16 marks a hidden column), and the table output.
+fn load_extractor_settings(state: &mut DataExtractionState, value: &serde_json::Value) {
+    let settings = &value["drawingDataExtractor"]["settings"];
+    let files = &settings["fileList"];
+    let paths = |key: &str| {
+        files[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry["absolute"].as_str().or_else(|| entry.as_str()))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    state.source_files = paths("files").into_iter().chain(paths("folders")).collect();
+    state.include_current = files["currentFile"].is_object();
+    state.source = if state.source_files.is_empty() {
+        ExtractionSource::CurrentDrawing
+    } else {
+        ExtractionSource::DrawingsAndFolders
+    };
+    state.saved_objects = Some(
+        settings["selectedTypesAndProperties"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|kind| kind["displayName"].as_str().map(str::to_string))
+            .collect(),
+    );
+    let report = &value["report"];
+    let columns: Vec<&str> = report["ColLists"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|column| column["flags"].as_i64().unwrap_or(0) & 16 == 0)
+        .filter_map(|column| column["strGlobalName"].as_str())
+        .collect();
+    state.show_count = columns.contains(&"AcDxCount");
+    state.show_name = columns.contains(&"AcDxObjectTypeName");
+    state.saved_properties = Some(
+        columns
+            .into_iter()
+            .filter(|key| !matches!(*key, "AcDxCount" | "AcDxObjectTypeName"))
+            .map(str::to_string)
+            .collect(),
+    );
+    if let Some(combine) = report["bInAggregateMode"].as_bool() {
+        state.combine_identical = combine;
+    }
+    let output = &value["outputSettings"];
+    let text_of = |key: &str, current: &str| output[key].as_str().unwrap_or(current).to_string();
+    state.output_path = text_of("fileName", &state.output_path);
+    state.output_file = !state.output_path.trim().is_empty();
+    state.output_table = output["ouputFlags"].as_i64().map_or(state.output_table, |f| f & 2 != 0);
+    state.table_style = text_of("tableStyleName", &state.table_style);
+    state.table_title = text_of("tableTitle", &state.table_title);
+    state.title_cell_style = text_of("titleCellStyle", &state.title_cell_style);
+    state.header_cell_style = text_of("headerCellStyle", &state.header_cell_style);
+    state.data_cell_style = text_of("dataCellStyle", &state.data_cell_style);
+    if let Some(headers) = output["usePropertyNameAsColumnHeader"].as_bool() {
+        state.property_headers = headers;
+    }
 }
 
 impl OpenCADStudio {
