@@ -4646,6 +4646,11 @@ fn moved_text_reach(style: &DimStyle, text_height: f64, dim_scale: f64) -> f64 {
     (style.dimasz * dim_scale + gap).max(text_height * 0.5 + gap + style.dimexe * dim_scale)
 }
 
+/// How close (as the sine of the angle) the arc's tangent at its middle must
+/// be to the text direction for the text to stand like a linear dimension's
+/// (measured: lifted at 0.00001 degrees off, not at 0.0001).
+const ANGULAR_LEVEL_TOLERANCE: f64 = 1e-6;
+
 /// DIMTMOVE 1 angular text the user placed.
 fn angular_text_moved(dim: &Dimension, style: Option<&DimStyle>) -> bool {
     style.is_some_and(|s| s.dimtmove == 1)
@@ -4809,14 +4814,39 @@ fn dimtmove_one_text(
             vertex.x as f64 + radius as f64 * mid.cos(),
             vertex.y as f64 + radius as f64 * mid.sin(),
         ];
+        // With the arc's tangent at its middle along the text, the text
+        // stands like a linear dimension's: on the arc it is lifted by DIMTAD
+        // (below for 2 and 4), on a leader it stands on a hook line running
+        // from a gap past its near edge to its far edge.
+        let tangent = [-mid.sin(), mid.cos()];
+        let along = (tangent[0] * u[1] - tangent[1] * u[0]).abs() < ANGULAR_LEVEL_TOLERANCE;
+        let level_lift = if along {
+            let half = dimension_text_extent_height(dim, style, text_height) * 0.5 + gap;
+            match s.dimtad {
+                0 => 0.0,
+                2 | 4 => -half,
+                _ => half,
+            }
+        } else {
+            0.0
+        };
         if !angular_text_on_leader(dim, style, document) {
             return Some(MovedText {
-                center: point,
+                center: v3(at(p, v, level_lift)),
                 lines: Vec::new(),
             });
         }
         // Text straight above or below the middle hangs its hook on the right.
         let side = if dot(sub(p, m), u) > 0.0 { 1.0 } else { -1.0 };
+        if level_lift != 0.0 {
+            let line = at(p, v, -level_lift);
+            let hook_start = at(line, u, -side * (text_width * 0.5 + gap));
+            let hook_end = at(line, u, side * text_width * 0.5);
+            return Some(MovedText {
+                center: point,
+                lines: vec![(v3(m), v3(hook_start)), (v3(hook_start), v3(hook_end))],
+            });
+        }
         let hook_end = at(p, u, -side * (text_width * 0.5 + gap));
         let hook_start = at(hook_end, u, -side * arrow);
         return Some(MovedText {
