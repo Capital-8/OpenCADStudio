@@ -98,7 +98,7 @@ checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 [[package]]
 name = "acadrust"
 version = "0.6.8"
-source = "git+https://github.com/HakanSeven12/acadrust.git?rev=75dd8f5#75dd8f5cd3b5dd2c56d9c9d4e8c14b816d31d68d"
+source = "git+https://github.com/HakanSeven12/acadrust.git?rev=ef8ba01#ef8ba017278e70961473cc5ebd8cfb5f4ab2df07"
 dependencies = [
  "anyhow",
  "bitflags 2.13.1",
@@ -4438,7 +4438,7 @@ dependencies = [
 [[package]]
 name = "opencaddocument"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=e6135a7#e6135a72ec46046cd23a84df1b13c8b4fe9541f2"
+source = "git+https://github.com/HakanSeven12/opencaddocument.git?rev=52fa133#52fa133081f6f1aa1046f7b16e4b1ec119e9dcc9"
 dependencies = [
  "acadrust",
  "ifccad",
@@ -4457,7 +4457,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=faf2ee7#faf2ee7ef3000ed65692cf8a65c134461ca06288"
+source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=64a5d0e#64a5d0ebf958668c9f094382b93c682b6e677985"
 dependencies = [
  "acadrust",
  "cavalier_contours",
@@ -4468,7 +4468,7 @@ dependencies = [
 [[package]]
 name = "opencadkernel-constraints"
 version = "0.1.0"
-source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=faf2ee7#faf2ee7ef3000ed65692cf8a65c134461ca06288"
+source = "git+https://github.com/HakanSeven12/opencadkernel.git?rev=64a5d0e#64a5d0ebf958668c9f094382b93c682b6e677985"
 dependencies = [
  "nalgebra",
 ]
