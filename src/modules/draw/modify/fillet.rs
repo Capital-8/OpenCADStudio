@@ -359,6 +359,28 @@ fn clamp_angle_to_arc(a: f64, start: f64, end: f64) -> f64 {
     }
 }
 
+/// The arc cut back or extended to `angle` on its circle. An angle on the
+/// drawn part keeps the side of `pick` (an angle too); one beyond it
+/// extends whichever end is nearer, as a corner or fillet meets it there.
+fn arc_to_angle(arc: &ArcEnt, angle: f64, pick: f64) -> ArcEnt {
+    let (start, end) = (arc.start_angle, arc.end_angle);
+    let span = arc_span(start, end);
+    let rel = (angle - start).rem_euclid(TAU);
+    if rel <= span {
+        let pick_rel = (clamp_angle_to_arc(pick, start, end) - start).rem_euclid(TAU);
+        return if rel <= pick_rel {
+            trim_arc(arc, angle, end)
+        } else {
+            trim_arc(arc, start, angle)
+        };
+    }
+    if rel - span <= TAU - rel {
+        trim_arc(arc, start, angle)
+    } else {
+        trim_arc(arc, angle, end)
+    }
+}
+
 /// Trim an arc so it goes from `new_start` to `new_end` (both in radians).
 fn trim_arc(orig: &ArcEnt, new_start: f64, new_end: f64) -> ArcEnt {
     let mut a = orig.clone();
@@ -1240,7 +1262,7 @@ fn fillet_line_arc(
     z: f64,
 ) -> Option<(EntityType, EntityType, Option<EntityType>)> {
     let (p1, _, u, _) = line_geom(line);
-    let (ac, ar, a_start, a_end, _) = arc_geom(arc);
+    let (ac, ar, _, _, _) = arc_geom(arc);
 
     // Intersection of infinite line with the arc's circle
     let ts = line_circle(p1, u, ac, ar);
@@ -1262,21 +1284,8 @@ fn fillet_line_arc(
 
         // Trim line to intersection
         let new_line = trim_line_to_point(line, [ix, iy], click_line)?;
-        // Trim arc to intersection angle
-        let i_angle = arc_angle_at(ac, [ix, iy]);
-        let i_clamped = clamp_angle_to_arc(i_angle, a_start, a_end);
-        let arc_click_angle = arc_angle_at(ac, click_arc);
-        let arc_click_clamped = clamp_angle_to_arc(arc_click_angle, a_start, a_end);
-        // Keep the arc side from i_clamped toward the click
-        let new_arc = if {
-            let sp_to_click = arc_span(i_clamped, arc_click_clamped);
-            let sp_click_to_end = arc_span(arc_click_clamped, a_end);
-            sp_to_click <= sp_click_to_end
-        } {
-            trim_arc(arc, i_clamped, a_end)
-        } else {
-            trim_arc(arc, a_start, i_clamped)
-        };
+        // Cut or extend the arc to the same corner.
+        let new_arc = arc_to_angle(arc, arc_angle_at(ac, [ix, iy]), arc_angle_at(ac, click_arc));
         return Some((EntityType::Line(new_line), EntityType::Arc(new_arc), None));
     }
 
@@ -1291,24 +1300,16 @@ fn fillet_line_arc(
         click_arc,
         radius,
     ) {
-        // The touch on the arc has to be on the drawn part of it, not on the
-        // rest of the circle it belongs to.
-        let tp_arc_angle = arc_angle_at(ac, fillet.tangent2);
-        let tp_arc_clamped = clamp_angle_to_arc(tp_arc_angle, a_start, a_end);
-        if (norm_angle(tp_arc_angle) - norm_angle(tp_arc_clamped)).abs() > 0.01 {
-            continue;
-        }
         let Some(new_line) = trim_line_to_point(line, fillet.tangent1, click_line) else {
             continue;
         };
-        // Keep the side of the arc the click is on.
-        let arc_click_rel = (arc_angle_at(ac, click_arc) - a_start).rem_euclid(TAU);
-        let tp_arc_rel = (tp_arc_clamped - a_start).rem_euclid(TAU);
-        let new_arc = if tp_arc_rel <= arc_click_rel {
-            trim_arc(arc, tp_arc_clamped, a_end)
-        } else {
-            trim_arc(arc, a_start, tp_arc_clamped)
-        };
+        // The arc is cut back to its touch, or extended to it when the
+        // fillet meets its circle past the drawn part.
+        let new_arc = arc_to_angle(
+            arc,
+            arc_angle_at(ac, fillet.tangent2),
+            arc_angle_at(ac, click_arc),
+        );
         return Some((
             EntityType::Line(new_line),
             EntityType::Arc(new_arc),
@@ -1332,8 +1333,8 @@ fn fillet_arc_arc(
     radius: f64,
     z: f64,
 ) -> Option<(EntityType, EntityType, Option<EntityType>)> {
-    let (c1, r1, s1, e1, _) = arc_geom(a1);
-    let (c2, r2, s2, e2, _) = arc_geom(a2);
+    let (c1, r1, _, _, _) = arc_geom(a1);
+    let (c2, r2, _, _, _) = arc_geom(a2);
 
     if radius < 1e-9 {
         // r=0: trim both arcs to their intersection point
@@ -1353,53 +1354,25 @@ fn fillet_arc_arc(
             return None;
         }
 
-        let ia1 = arc_angle_at(c1, ip);
-        let ia2 = arc_angle_at(c2, ip);
-        let ic1 = clamp_angle_to_arc(ia1, s1, e1);
-        let ic2 = clamp_angle_to_arc(ia2, s2, e2);
-
-        let ca1 = clamp_angle_to_arc(arc_angle_at(c1, click1), s1, e1);
-        let ca2 = clamp_angle_to_arc(arc_angle_at(c2, click2), s2, e2);
-
-        let new_a1 = if (ic1 - s1).rem_euclid(TAU) <= (ca1 - s1).rem_euclid(TAU) {
-            trim_arc(a1, ic1, e1)
-        } else {
-            trim_arc(a1, s1, ic1)
-        };
-        let new_a2 = if (ic2 - s2).rem_euclid(TAU) <= (ca2 - s2).rem_euclid(TAU) {
-            trim_arc(a2, ic2, e2)
-        } else {
-            trim_arc(a2, s2, ic2)
-        };
+        let new_a1 = arc_to_angle(a1, arc_angle_at(c1, ip), arc_angle_at(c1, click1));
+        let new_a2 = arc_to_angle(a2, arc_angle_at(c2, ip), arc_angle_at(c2, click2));
         return Some((EntityType::Arc(new_a1), EntityType::Arc(new_a2), None));
     }
 
     // Same construction as the line-and-arc case, from the same place: the
     // centre is where an offset of one circle crosses an offset of the other.
     for fillet in ranked_fillets(&arc_curve(a1), click1, &arc_curve(a2), click2, radius) {
-        // Both touches have to be on the drawn parts of their arcs.
-        let tp1_angle = arc_angle_at(c1, fillet.tangent1);
-        let tp2_angle = arc_angle_at(c2, fillet.tangent2);
-        let tc1 = clamp_angle_to_arc(tp1_angle, s1, e1);
-        let tc2 = clamp_angle_to_arc(tp2_angle, s2, e2);
-        if (norm_angle(tp1_angle) - norm_angle(tc1)).abs() > 0.01
-            || (norm_angle(tp2_angle) - norm_angle(tc2)).abs() > 0.01
-        {
-            continue;
-        }
-
-        let ca1 = clamp_angle_to_arc(arc_angle_at(c1, click1), s1, e1);
-        let ca2 = clamp_angle_to_arc(arc_angle_at(c2, click2), s2, e2);
-        let new_a1 = if (tc1 - s1).rem_euclid(TAU) <= (ca1 - s1).rem_euclid(TAU) {
-            trim_arc(a1, tc1, e1)
-        } else {
-            trim_arc(a1, s1, tc1)
-        };
-        let new_a2 = if (tc2 - s2).rem_euclid(TAU) <= (ca2 - s2).rem_euclid(TAU) {
-            trim_arc(a2, tc2, e2)
-        } else {
-            trim_arc(a2, s2, tc2)
-        };
+        // Each arc is cut back to its touch, or extended to it.
+        let new_a1 = arc_to_angle(
+            a1,
+            arc_angle_at(c1, fillet.tangent1),
+            arc_angle_at(c1, click1),
+        );
+        let new_a2 = arc_to_angle(
+            a2,
+            arc_angle_at(c2, fillet.tangent2),
+            arc_angle_at(c2, click2),
+        );
         return Some((
             EntityType::Arc(new_a1),
             EntityType::Arc(new_a2),
