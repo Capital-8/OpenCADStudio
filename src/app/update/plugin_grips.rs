@@ -149,6 +149,7 @@ impl OpenCADStudio {
         }
         self.plugin_grip_deliveries = Default::default();
         self.plugin_grip_live_originals = Vec::new();
+        self.plugin_grip_descriptor_drag = None;
         let active = ActivePluginGrip {
             tab: i,
             plugin: candidate.plugin.clone(),
@@ -251,13 +252,23 @@ impl OpenCADStudio {
         //    later phase (e.g. re-applying stale live geometry after the
         //    settle already restored it).
         if let Some(point) = self.plugin_grip_deliveries.take_sendable_move() {
-            let event =
-                self.event_for_active(tab, ocs_plugin_api::host::CustomGripPhase::Move, point);
-            if let Some(event) = event {
-                self.issue_phase(tab, ocs_plugin_api::host::CustomGripPhase::Move, event);
-                if self.plugin_grip_deliveries.has_landed() {
-                    // Process the fresh landing now (order-preserving).
-                    return self.pump_plugin_grips();
+            if self.plugin_grip_descriptor_drag.is_some() {
+                // API v14 (the descriptor-backed drag): the Begin answer
+                // handed the host a live design, so the coalesced cursor move
+                // re-derives the display set LOCALLY along the record model's
+                // own laws — no Move frame crosses the IPC while the mode is
+                // engaged. The v12 streaming semantics stay the fallback for
+                // every unserved declaration.
+                self.apply_descriptor_grip_move(tab, point);
+            } else {
+                let event =
+                    self.event_for_active(tab, ocs_plugin_api::host::CustomGripPhase::Move, point);
+                if let Some(event) = event {
+                    self.issue_phase(tab, ocs_plugin_api::host::CustomGripPhase::Move, event);
+                    if self.plugin_grip_deliveries.has_landed() {
+                        // Process the fresh landing now (order-preserving).
+                        return self.pump_plugin_grips();
+                    }
                 }
             }
         }
@@ -505,7 +516,42 @@ impl OpenCADStudio {
         phase: ocs_plugin_api::host::CustomGripPhase,
         response: ocs_plugin_api::host::CustomGripResponse,
     ) {
-        let _ = phase;
+        if matches!(phase, ocs_plugin_api::host::CustomGripPhase::Begin) {
+            // API v14 (the descriptor-backed drag): a Begin answer may hand
+            // the host a live design. Engagement happens only when the whole
+            // declaration is serviceable (the descriptor + a finite positive
+            // tolerance + a class-stamped anchor + the class schema's drive
+            // row + a profile-chain END re-anchor inside the segment range);
+            // anything else keeps the v12 streaming path with one headline
+            // naming the constraint — older plugins and old-style responses
+            // deserialize their fields to None and never reach the mode.
+            let tolerance = response
+                .descriptor_tolerance
+                .filter(|t| t.is_finite() && *t > 0.0);
+            match (response.descriptor.clone(), tolerance) {
+                (
+                    Some(ocs_plugin_api::host::PluginDisplayDescriptor::ParametricChain(chain)),
+                    Some(tolerance),
+                ) => {
+                    self.engage_descriptor_grip_drag(tab, chain, tolerance);
+                }
+                (Some(descriptor), None) => {
+                    crate::plugin::push_guard_error(format!(
+                        "custom grip begin: {:?} handed a descriptor design without a finite \
+                         positive descriptor tolerance; the streaming path continues",
+                        descriptor.kind_label(),
+                    ));
+                }
+                (Some(descriptor), _) => {
+                    crate::plugin::push_guard_error(format!(
+                        "custom grip begin: the descriptor kind {:?} has no host-served \
+                         derivation; the streaming path continues",
+                        descriptor.kind_label(),
+                    ));
+                }
+                (None, _) => {}
+            }
+        }
         let wires = crate::app::plugin_host::convert_preview_wires(response.preview.clone());
         self.tabs[tab].scene.set_preview_wires(wires);
         self.apply_plugin_grip_live_geometry(tab, &response.live_entities);
@@ -659,6 +705,7 @@ impl OpenCADStudio {
         self.tabs[tab].active_plugin_grip = None;
         self.plugin_grip_deliveries = Default::default();
         self.plugin_grip_live_originals = Vec::new();
+        self.plugin_grip_descriptor_drag = None;
         self.tabs[tab].scene.set_preview_wires(Vec::new());
         self.tabs[tab].dirty = true;
     }
@@ -746,6 +793,593 @@ impl OpenCADStudio {
         self.last_plugin_selection = None;
         self.notify_plugins_selection_changed();
     }
+
+    // ── API v14: the descriptor-backed grip drag ─────────────────────────
+    //
+    // The Begin answer handed the host a live design (the record layer's
+    // own grammar): the coalesced cursor move re-derives the display set
+    // LOCALLY — the drive point follows the cursor, the section re-derives
+    // per its species' own record-model laws, the joints propagate from the
+    // engine's own sampling, and the chain's own audit (the staging build)
+    // gates every move. The plugin's settle callback stays the only write
+    // window: the per-move restage is the visual-only phase (originals
+    // stashed once, zero history steps, byte-identical restore before the
+    // settle's push_undo sees the pre-drag document).
+
+    /// Engage the descriptor mode when the whole declaration is serviceable.
+    /// Everything else keeps the v12 streaming path with one headline.
+    fn engage_descriptor_grip_drag(
+        &mut self,
+        tab: usize,
+        chain: ocs_plugin_api::host::ParametricChain,
+        tolerance: f64,
+    ) {
+        let Some(active) = self.tabs[tab].active_plugin_grip.as_ref() else {
+            return;
+        };
+        let plugin = active.plugin.clone();
+        let grip_id = active.grip_id;
+        let refuse = |note: String| {
+            crate::plugin::push_guard_error(format!(
+                "descriptor grip {grip_id} of {plugin:?}: {note} — the streaming path continues"
+            ))
+        };
+        let Some(anchor) = active.anchor else {
+            refuse(
+                "the declared grip carries no anchor entity, so the host cannot resolve the \
+                 instance's identity stamp"
+                    .to_owned(),
+            );
+            return;
+        };
+        let binding = match crate::app::plugin_host::resolve_plugin_class_binding(self, tab, anchor)
+        {
+            Ok(binding) => binding,
+            Err(reason) => {
+                refuse(format!(
+                    "its anchor carries no registered class stamp ({reason})"
+                ));
+                return;
+            }
+        };
+        let Some(declaration) = self.tabs[tab].plugin_classes.find(&plugin, &binding.class_id)
+        else {
+            refuse(format!("class {:?} not registered", binding.class_id));
+            return;
+        };
+        let Some(drive) = declaration
+            .grip_schema
+            .iter()
+            .find(|entry| entry.grip_id == grip_id)
+            .and_then(|entry| entry.drives)
+        else {
+            refuse("the class schema's row does not declare a drive".to_owned());
+            return;
+        };
+        if chain.plane != ocs_plugin_api::host::ParametricPlane::Profile {
+            refuse(
+                "the plan chain has no host-served END re-anchor; plan drags keep the \
+                 plugin's own per-move semantics"
+                    .to_owned(),
+            );
+            return;
+        }
+        if drive.at_start {
+            refuse(
+                "the declared START side has no host-served re-anchor yet; an END-point drop \
+                 re-anchors fully"
+                    .to_owned(),
+            );
+            return;
+        }
+        let segment = drive.segment as usize;
+        if segment >= chain.segments.len() {
+            refuse(format!(
+                "the drive names segment {} beyond the design's {} segments",
+                drive.segment,
+                chain.segments.len()
+            ));
+            return;
+        }
+        let handles = Self::instance_display_set(self, tab, &binding);
+        if handles.is_empty() {
+            refuse(
+                "no stamped display set resolves for the instance's identity stamp".to_owned(),
+            );
+            return;
+        }
+        self.plugin_grip_descriptor_drag = Some(crate::plugin::grip_points::DescriptorGripDrag {
+            plugin,
+            class_id: binding.class_id,
+            design_record: binding.design_record,
+            chain,
+            tolerance,
+            handles,
+            segment,
+            refusal_noted: false,
+        });
+    }
+
+    /// The coalesced cursor move in the descriptor mode: the local walk —
+    /// re-anchor, propagate, audit, patch over the same handles. A refused
+    /// move keeps the last good design on the screen (the drag continues);
+    /// exactly one headline notes refusals per drag.
+    fn apply_descriptor_grip_move(&mut self, tab: usize, point: DVec3) {
+        // Snapshot the state (the walk reads local copies; the mode's truth
+        // re-commits only when a move's own audit passes).
+        let Some(drag) = self.plugin_grip_descriptor_drag.clone() else {
+            return;
+        };
+        // The grip's declared axis hard-constrains the drive point BEFORE the
+        // re-anchor (idempotent with the viewport's own constraint; the
+        // direct-delivery paths pass the raw cursor). The profile sheet is
+        // the world XY plane; the projection lands on it.
+        let constrained = match (
+            self.tabs
+                .get(tab)
+                .and_then(|t| t.active_plugin_grip.as_ref())
+                .map(|active| active.origin_world),
+            self.tabs[tab]
+                .active_plugin_grip
+                .as_ref()
+                .and_then(|active| active.axis),
+            drag.chain.plane,
+        ) {
+            (Some(origin), Some(axis), ocs_plugin_api::host::ParametricPlane::Profile) => {
+                let d = point - origin;
+                let along = d.dot(axis);
+                let hit = origin + axis * along;
+                DVec3::new(hit.x, hit.y, 0.0)
+            }
+            _ => point,
+        };
+        let chain = drag.chain.clone();
+        let segment = drag.segment;
+        let tolerance = drag.tolerance;
+        let handles = drag.handles.clone();
+        match reanchor_profile_chain(&chain, segment, constrained) {
+            Ok(reanchored) => match crate::parametric::build_display_entities(
+                &reanchored,
+                tolerance,
+            ) {
+                Ok((fresh, _carriers)) if fresh.len() == handles.len() => {
+                    // The honest lane (the seat test's own arms): clone the
+                    // live entities — identity, layer and the XDATA stamp ride
+                    // along — and patch ONLY the geometry from the re-derived
+                    // carriers. The count-staged set stays the drag's handles.
+                    let document = &self.tabs[tab].scene.document;
+                    let mut pairs: Vec<(codec::Handle, codec::EntityType)> =
+                        Vec::with_capacity(handles.len());
+                    let mut refused: Option<String> = None;
+                    for (slot, fresh_entity) in handles.iter().zip(fresh.iter()) {
+                        let Some(current) = document.get_entity(*slot) else {
+                            refused = Some(format!("staged entity {slot:?} is no longer live"));
+                            break;
+                        };
+                        let mut patched = current.clone();
+                        if let Err(reason) =
+                            patch_carrier_geometry(&mut patched, fresh_entity)
+                        {
+                            refused = Some(reason);
+                            break;
+                        }
+                        pairs.push((*slot, patched));
+                    }
+                    match refused {
+                        None => {
+                            let live = crate::plugin::grip_points::DescriptorGripDrag {
+                                chain: reanchored,
+                                ..drag
+                            };
+                            self.plugin_grip_descriptor_drag = Some(live);
+                            // The live-geometry machinery: same handles,
+                            // originals stashed once, zero history steps.
+                            self.apply_plugin_grip_live_geometry(tab, &pairs);
+                        }
+                        Some(reason) => Self::note_descriptor_refusal(
+                            self,
+                            format!("the display set cannot be patched in place: {reason}"),
+                        ),
+                    }
+                }
+                Ok((fresh, _)) => Self::note_descriptor_refusal(
+                    self,
+                    format!(
+                        "the re-derived entity count {} differs from the staged set {}; the \
+                         count-stable restage cannot apply",
+                        fresh.len(),
+                        handles.len()
+                    ),
+                ),
+                Err(reason) => Self::note_descriptor_refusal(
+                    self,
+                    format!("the re-derivation's own gates refuse the move: {reason}"),
+                ),
+            },
+            Err(reason) => Self::note_descriptor_refusal(self, reason),
+        }
+    }
+
+    /// The stamped display set of the dragged instance: every entity whose
+    /// identity stamp names the binding's class AND its design record, in
+    /// document order (the staging order = the carrier order the restage
+    /// patches over). An instance staged without a record linkage matches
+    /// stamps that carry the schema version alone.
+    fn instance_display_set(
+        app: &OpenCADStudio,
+        tab: usize,
+        binding: &crate::app::plugin_host::PluginClassInstanceBinding,
+    ) -> Vec<codec::Handle> {
+        use codec::xdata::XDataValue;
+        let mut out = Vec::new();
+        for entity in app.tabs[tab].scene.document.entities() {
+            let handle = entity.common().handle;
+            let stamped = entity
+                .common()
+                .extended_data
+                .records()
+                .iter()
+                .any(|record| {
+                    if record.application_name != binding.class_id || record.values.is_empty() {
+                        return false;
+                    }
+                    if !matches!(record.values.first(), Some(XDataValue::Integer32(_))) {
+                        return false;
+                    }
+                    match record.values.get(1) {
+                        Some(XDataValue::String(linkage)) => {
+                            !binding.design_record.is_empty()
+                                && linkage == &binding.design_record
+                        }
+                        None => binding.design_record.is_empty(),
+                        Some(_) => false,
+                    }
+                });
+            if stamped {
+                out.push(handle);
+            }
+        }
+        out
+    }
+
+    /// One headline per drag for move refusals, then silence (a wild drag
+    /// across an illegal band stays quiet while the last good design shows).
+    fn note_descriptor_refusal(this: &mut OpenCADStudio, note: String) {
+        if let Some(drag) = this.plugin_grip_descriptor_drag.as_mut() {
+            if !drag.refusal_noted {
+                drag.refusal_noted = true;
+                crate::plugin::push_guard_error(format!(
+                    "descriptor grip drag for {:?}: {note}; the last good design stays until \
+                     a move the model serves",
+                    drag.plugin
+                ));
+            }
+        }
+    }
+}
+
+/// Patch ONLY the geometry of a live staged carrier from a re-derived
+/// entity, keyed by kind (the seat test's honest arms). The identity stamp,
+/// the reference-only designation and the layer ride on the clone untouched.
+pub(in crate::app) fn patch_carrier_geometry(
+    patched: &mut codec::EntityType,
+    fresh: &codec::EntityType,
+) -> Result<(), String> {
+    match (&mut *patched, &*fresh) {
+        (codec::EntityType::Line(old), codec::EntityType::Line(newer)) => {
+            old.start = newer.start;
+            old.end = newer.end;
+        }
+        (codec::EntityType::Spline(old), codec::EntityType::Spline(newer)) => {
+            old.degree = newer.degree;
+            old.control_points = newer.control_points.clone();
+            old.knots = newer.knots.clone();
+            old.weights = newer.weights.clone();
+            old.begin_tangent = newer.begin_tangent;
+            old.end_tangent = newer.end_tangent;
+        }
+        (codec::EntityType::Arc(old), codec::EntityType::Arc(newer)) => {
+            old.center = newer.center;
+            old.radius = newer.radius;
+            old.start_angle = newer.start_angle;
+            old.end_angle = newer.end_angle;
+        }
+        (codec::EntityType::Circle(old), codec::EntityType::Circle(newer)) => {
+            old.center = newer.center;
+            old.radius = newer.radius;
+        }
+        _ => {
+            return Err(format!(
+                "the re-derived set keeps the staged carrier shape ({} vs {})",
+                entity_kind_label(patched),
+                entity_kind_label(fresh),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A stable diagnostic label for the carrier-shape refusal.
+fn entity_kind_label(entity: &codec::EntityType) -> &'static str {
+    match entity {
+        codec::EntityType::Line(_) => "line",
+        codec::EntityType::Spline(_) => "spline",
+        codec::EntityType::Arc(_) => "arc",
+        codec::EntityType::Circle(_) => "circle",
+        _ => "other",
+    }
+}
+
+/// The record model's own END-POINT-FOLLOW re-anchor for a profile chain:
+/// the drive segment's end point becomes the cursor's sheet point (the run
+/// becomes the station span), the section re-derives per ITS species' own
+/// laws, and the downstream joints re-declare from the engine's own
+/// sampling — the crest test's walk, made generic. The result still owes
+/// its final legality to the chain's own audit (the staging build gates
+/// the move).
+pub(in crate::app) fn reanchor_profile_chain(
+    chain: &ocs_plugin_api::host::ParametricChain,
+    segment: usize,
+    cursor: glam::DVec3,
+) -> Result<ocs_plugin_api::host::ParametricChain, String> {
+    use ocs_plugin_api::host::{ParametricPlane, ParametricSpecies, VerticalSegmentSpecies};
+    const MIN_RUN: f64 = 1e-6;
+    if chain.plane != ParametricPlane::Profile {
+        return Err("the re-anchor serves the profile sheet only".to_owned());
+    }
+    let Some(_) = chain.segments.get(segment) else {
+        return Err(format!("drive segment {segment} is out of the design's range"));
+    };
+    let mut edited = chain.clone();
+    {
+        let seg = &mut edited.segments[segment];
+        let run = cursor.x - seg.start_point[0];
+        if !(run > MIN_RUN) {
+            return Err(format!(
+                "the re-anchored run {run:.6} leaves the section's support (a backward or \
+                 tiny station span)"
+            ));
+        }
+        let height = cursor.y;
+        match &mut seg.species {
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient) => {
+                // The tail re-tilts: one gradient, declared on both ends, the
+                // sheet angle follows. The upstream seam re-checks itself in
+                // the chain audit — a wild hand is refused there.
+                let g = (height - seg.start_point[1]) / run;
+                seg.start_gradient = g;
+                seg.end_gradient = g;
+                seg.start_direction = g.atan();
+                seg.length = run;
+            }
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::ParabolicArc) => {
+                // The mean-gradient law: h(L) = h0 + L*(g1+g2)/2, so the end
+                // height fixes g2; the vertex law fixes R = L/(g2 - g1) — the
+                // exact pair the crest test re-declares by hand.
+                let g2 = 2.0 * (height - seg.start_point[1]) / run - seg.start_gradient;
+                let v = g2 - seg.start_gradient;
+                if v.abs() < 1e-12 {
+                    return Err(
+                        "the re-anchored end sits on the entry-slope line, where the vertex \
+                         radius degenerates (declare CONSTANTGRADIENT for the flat run)"
+                            .to_owned(),
+                    );
+                }
+                seg.end_gradient = g2;
+                seg.start_radius = run / v;
+                seg.length = run;
+            }
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc) => {
+                // The circular's exact run law: sin(t1) = sin(t0) + run*k with
+                // k = 1/R, and h = h0 + (cos(t0) - cos(t1))/k. One unknown k;
+                // a deterministic bracketed bisection through the law.
+                let theta0 = seg.start_gradient.atan();
+                let s0 = theta0.sin();
+                let c0 = theta0.cos();
+                let height_of = |k: f64, seg: &ocs_plugin_api::host::ParametricSegment| -> Option<f64> {
+                    if k.abs() < 1e-12 {
+                        return None;
+                    }
+                    let s1 = s0 + run * k;
+                    if !(s1 > -1.0 && s1 < 1.0) {
+                        return None;
+                    }
+                    Some(seg.start_point[1] + (c0 - s1.asin().cos()) / k)
+                };
+                let k = solve_by_bisection(
+                    |k| height_of(k, seg),
+                    1.0 / seg.start_radius,
+                    height,
+                )?;
+                seg.start_radius = 1.0 / k;
+                let s1 = s0 + run * k;
+                seg.end_gradient = s1.asin().tan();
+                seg.length = run;
+            }
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::Clothoid)
+            | ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(_)) => {
+                // The sigmoid-height law has no closed form through the chain
+                // grammar: the end curvature solves by the engine's own
+                // sampling (bisection through sample_chain over the FRONT —
+                // the earlier segments are untouched, so the front's total run
+                // is station-true and the sampled end height is the law's own).
+                let front_end = edited
+                    .segments
+                    .iter()
+                    .take(segment + 1)
+                    .map(|s| s.length)
+                    .sum::<f64>();
+                let front_height_of =
+                    |k1: f64,
+                     edited: &ocs_plugin_api::host::ParametricChain,
+                     front_end: f64|
+                     -> Option<f64> {
+                        // The FRONT-ONLY chain: the drive's end is the front's
+                        // end, so the total lands strictly inside (the exact
+                        // joint of the full chain would make the sample
+                        // ambiguous).
+                        let mut front = edited.clone();
+                        front.segments.truncate(segment + 1);
+                        if let ParametricSpecies::Vertical(VerticalSegmentSpecies::Clothoid)
+                        | ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(_)) =
+                            &mut front.segments[segment].species
+                        {
+                            front.segments[segment].end_curvature = k1;
+                        } else {
+                            return None;
+                        }
+                        crate::parametric::sample_chain(&front, front_end)
+                            .ok()
+                            .flatten()
+                            .map(|sample| sample.point[1])
+                    };
+                let k1 = solve_by_bisection(
+                    |k1| front_height_of(k1, &edited, front_end),
+                    edited.segments[segment].end_curvature,
+                    height,
+                )?;
+                edited.segments[segment].end_curvature = k1;
+                edited.segments[segment].length = run;
+            }
+            ParametricSpecies::Horizontal(_) => {
+                return Err("the drive segment is not a profile species".to_owned());
+            }
+        }
+    }
+    // The downstream re-declaration: the joints propagate from the engine's
+    // own sampling (the crest walk): each later segment's start re-bases to
+    // the sampled joint (point, slope, sheet direction); the species' own
+    // law fields stay declared, re-deriving only what the record model's own
+    // consistency requires (the parabola's vertex radius, the circle's
+    // realized end gradient, the constant's matched pair).
+    let n = edited.segments.len();
+    if segment + 1 < n {
+        let mut run = edited
+            .segments
+            .iter()
+            .take(segment + 1)
+            .map(|s| s.length)
+            .sum::<f64>();
+        let mut joint = crate::parametric::sample_chain(&edited, run)
+            .ok()
+            .flatten()
+            .ok_or_else(|| {
+                "the re-anchored front does not sample (the design left its own domain)"
+                    .to_owned()
+            })?;
+        for j in (segment + 1)..n {
+            let slope = joint.direction[1] / joint.direction[0];
+            {
+                let seg = &mut edited.segments[j];
+                seg.start_point = joint.point;
+                seg.start_gradient = slope;
+                seg.start_direction = slope.atan();
+                match &mut seg.species {
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ConstantGradient) => {
+                        seg.end_gradient = slope;
+                    }
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::ParabolicArc) => {
+                        let v = seg.end_gradient - slope;
+                        if v.abs() < 1e-12 {
+                            return Err(
+                                "the downstream parabolic re-base degenerates (its gradients \
+                                 matched the joint slope)"
+                                    .to_owned(),
+                            );
+                        }
+                        seg.start_radius = seg.length / v;
+                    }
+                    ParametricSpecies::Vertical(VerticalSegmentSpecies::CircularArc) => {
+                        let theta0 = slope.atan();
+                        let s1 = theta0.sin() + seg.length / seg.start_radius;
+                        if !(s1 > -1.0 && s1 < 1.0) {
+                            return Err(
+                                "the downstream circular re-base leaves the sloped range"
+                                    .to_owned(),
+                            );
+                        }
+                        seg.start_gradient = slope;
+                        seg.end_gradient = s1.asin().tan();
+                    }
+                    _ => {}
+                }
+            }
+            run += edited.segments[j].length;
+            joint = crate::parametric::sample_chain(&edited, run)
+                .ok()
+                .flatten()
+                .ok_or_else(|| {
+                    "the re-based chain does not sample (a re-derived joint left the domain)"
+                        .to_owned()
+                })?;
+        }
+    }
+    Ok(edited)
+}
+
+/// Deterministic bracketed bisection: the voice returns `None` where its
+/// probe leaves the model's own domain. The bracket widens around `current`
+/// (up to 16 doublings), then bisects 60 times — bit-stable per design: the
+/// same move always solves the same value, seeding from the record's own
+/// declared field.
+pub(in crate::app) fn solve_by_bisection(
+    voice: impl Fn(f64) -> Option<f64>,
+    current: f64,
+    target: f64,
+) -> Result<f64, String> {
+    let eval = |x: f64| voice(x).map(|h| h - target);
+    if let Some(0.0) = eval(current) {
+        return Ok(current);
+    }
+    let mut width = (current.abs() * 2.0).max(1e-9);
+    let mut lo: Option<(f64, f64)> = None;
+    let mut hi: Option<(f64, f64)> = None;
+    for _ in 0..16u32 {
+        if let Some(f) = eval(current - width) {
+            if f < 0.0 && lo.is_none() {
+                lo = Some((current - width, f));
+            } else if f > 0.0 && hi.is_none() {
+                hi = Some((current - width, f));
+            }
+        }
+        if let Some(f) = eval(current + width) {
+            if f < 0.0 && lo.is_none() {
+                lo = Some((current + width, f));
+            } else if f > 0.0 && hi.is_none() {
+                hi = Some((current + width, f));
+            }
+        }
+        if lo.is_some() && hi.is_some() {
+            break;
+        }
+        width *= 2.0;
+    }
+    let (Some((mut klo, _)), Some((mut khi, _))) = (lo, hi) else {
+        return Err(
+            "the re-anchor's target lies outside the section's own curvature support (the \
+             sloped range or the band refuses)"
+                .to_owned(),
+        );
+    };
+    if klo > khi {
+        std::mem::swap(&mut klo, &mut khi);
+    }
+    for _ in 0..60u32 {
+        let mid = 0.5 * (klo + khi);
+        if !mid.is_finite() {
+            break;
+        }
+        match eval(mid) {
+            Some(f) if f < 0.0 => klo = mid,
+            Some(_) => khi = mid,
+            None => {
+                // Unreachable inside a valid bracket (the profile domains are
+                // convex in the solved variable); refuse rather than guess.
+                return Err("the re-anchor's bisection left its own bracket".to_owned());
+            }
+        }
+    }
+    Ok(0.5 * (klo + khi))
 }
 
 /// A future that resolves after the pump cadence (the same thread+oneshot

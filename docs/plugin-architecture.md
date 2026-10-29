@@ -624,6 +624,29 @@ gravity-centre correction applies verbatim to the Declared Viennese ramp
 shapes — the cant family, custom transitions — join as declared data,
 never as per-shape host code.
 
+**The descriptor-backed grip drag.** The drag pipeline's host-local tier
+(API v14): a class's grip schema may declare a drive —
+`PluginGripSchemaEntry.drives`, the design point the grip re-anchors —
+and the Begin answer may hand the host the live design plus the same
+tolerance the plugin staged its instance with. When the whole declaration
+is serviceable (the profile chain, the END side of a declared segment),
+the host re-derives the display set LOCALLY per coalesced cursor move:
+the drive segment's end follows the cursor, the section re-derives per
+its species' own record-model laws (the run becomes the station span;
+the mean-gradient and vertex-radius laws in the profile; the
+curvature-end species solve deterministically through the engine's own
+sampling), the downstream joints re-declare from the sampled joints, and
+the chain's own audit gates every move's design. No Move frames cross
+the IPC; the per-move restage patches the staged handles in place
+through the visual-only dynamic phase (originals stashed once, zero
+history steps, the byte-identical restore before the settle); the
+plugin's settle callback stays the only write window — records first,
+then the re-stage, exactly one plugin-labeled undo step. Unserved
+declarations (the plan plane, the START side, an out-of-range segment, a
+missing tolerance) fall back to the v12 streaming path with one headline
+in the error queue; older hosts read the new fields as the serde
+defaults and never change behavior.
+
 ## HostApi vs MCP — the two surfaces
 
 The host exposes exactly two programmatic surfaces, and they are separate
@@ -839,10 +862,12 @@ Next:
 - [ ] `#[repr(C)]` vtable / strict handshake for cross-toolchain binaries.
 - [ ] Trust: checksums / signatures before spawning plugin processes.
 - [ ] Interchange (LandXML / SWMM) and live `on_entity_committed` hooks.
-- [ ] Descriptor-backed grip drags: consume the Begin descriptor per coalesced
-      move (zero Move frames; the descriptor hook already rides the wire) —
-      measured trivially inside the frame budget by the staging bench's grip
-      section.
+- [x] Descriptor-backed grip drags: the Begin descriptor consumed per
+      coalesced move (zero Move frames; the declared `drives` row + the
+      response's per-move tolerance engage the profile-chain END re-anchor;
+      unserved declarations keep the v12 streaming path) — the drag's
+      settle stays the plugin's one write window and the session tests
+      mirror the grip-edit restage arc.
 - [x] Properties-panel parameter editing for plugin class entities: a
       `PluginClassParameter` schema on the declaration, the panel section
       bound to selected class-stamped entities, edits through the session's

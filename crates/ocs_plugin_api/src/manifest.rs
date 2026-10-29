@@ -100,7 +100,24 @@
 /// the vocabulary the IFC blends restate exactly, plus a bounded
 /// piecewise primitive for genuinely custom blends) and the host's
 /// generic Gaussian integrator executes it; new blend shapes join as
-/// declared data, never as per-shape host code.
+/// declared data, never as per-shape host code. The drag pipeline consumes
+/// the Begin descriptor: [`PluginGripSchemaEntry`](crate::host::PluginGripSchemaEntry)
+/// gains an optional `drives` row (the design point the grip re-anchors;
+/// serde default keeps earlier declarations streaming) and
+/// [`CustomGripResponse`](crate::host::CustomGripResponse) gains the
+/// accompanying per-move tolerance (the same value the plugin staged its
+/// instance with). When a Begin answer hands the host a serviceable
+/// descriptor design — the profile-chain END re-anchor — the host
+/// re-derives the display set LOCALLY per coalesced cursor move along the
+/// record model's OWN laws (the run becomes the station span, the gradient
+/// pair and the implied vertex radius re-derive, the downstream joints
+/// re-declare from the engine's own sampling, and the chain's own audit
+/// gates every move): no Move frames cross the IPC, the per-move restage
+/// patches the same staged handles through the visual-only phase (zero
+/// history steps, the byte-identical restore before the settle), and the
+/// plugin's settle callback stays the ONE write window (records first,
+/// then the re-stage; exactly one labeled undo step). Unserved declarations
+/// fall back to the v12 streaming path with one headline.
 pub const API_VERSION: u32 = 14;
 
 /// Oldest plugin API major the current host still loads. This keeps previously

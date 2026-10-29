@@ -503,6 +503,7 @@ mod tests {
             grip_schema: vec![crate::host::PluginGripSchemaEntry {
                 grip_id: 1,
                 param_name: "peak_gradient".to_string(),
+                drives: None,
             }],
             // API v14: the parameter schema rides the same frame byte-clean.
             parameters: vec![crate::host::PluginClassParameter {
@@ -597,6 +598,7 @@ mod tests {
                     layer: String::new(),
                 },
             )),
+            descriptor_tolerance: None,
         })
         .unwrap();
         assert!(

@@ -1069,15 +1069,24 @@ pub struct CustomGripResponse {
     pub live_entities: Vec<(Handle, EntityType)>,
     /// A descriptor-backed live design for the dragged instance (API v14,
     /// additive). Some on the Begin answer tells the host to derive the live
-    /// preview ITSELF from this design for the rest of the drag — re-evaluated
+    /// preview ITSELF from this design for the rest of the drag â€” re-evaluated
     /// locally per coalesced cursor move, no further Move frames crossing the
-    /// IPC — instead of the plugin streaming preview/live-entity geometry per
+    /// IPC â€” instead of the plugin streaming preview/live-entity geometry per
     /// move. The plugin's settle callback stays the only write window (its
     /// own labeled undo step; records first, then the re-stage). Older hosts
     /// deserialize the field to None and keep the v12 semantics untouched;
     /// None keeps every current response behaving exactly as before.
     #[serde(default)]
     pub descriptor: Option<PluginDisplayDescriptor>,
+    /// (API v14, additive) THE per-move re-derivation tolerance of a
+    /// descriptor-backed drag â€” the same tolerance the plugin staged its
+    /// instance with. `Some` must accompany the Begin answer's `descriptor`
+    /// (the host never invents a frame budget: a descriptor without a finite
+    /// positive tolerance leaves the v12 streaming semantics untouched, with
+    /// one headline in the error queue). Older hosts deserialize the field
+    /// to None.
+    #[serde(default)]
+    pub descriptor_tolerance: Option<f64>,
 }
 
 /// Per-response cap on live-geometry entities (API v12): the drag stays
@@ -1998,12 +2007,47 @@ pub struct PluginClassDeclaration {
 /// schema this grip drives. Drag semantics remain the declaring plugin's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PluginGripSchemaEntry {
-    /// Grip id — links a schema row to the plugin's `set_plugin_grips`
+    /// Grip id â€” links a schema row to the plugin's `set_plugin_grips`
     /// declaration (the drag's `CustomGripEvent::grip_id`).
     pub grip_id: u64,
     /// Parameter name in the class's record layer this grip drives
     /// (e.g. `"peak_gradient"`).
     pub param_name: String,
+    /// (API v14, additive) The design point this grip re-anchors in a
+    /// descriptor-backed drag: when the drag's Begin answer hands the host
+    /// a live descriptor design, the host re-derives that design per
+    /// coalesced cursor move through THIS declared rule instead of
+    /// streaming Move frames. `None` (the serde default: earlier
+    /// declarations and streaming-only grips) keeps the v11/v12 semantics
+    /// untouched.
+    #[serde(default)]
+    pub drives: Option<PluginGripDrive>,
+}
+
+/// The design point a descriptor-backed grip re-anchors (API v14,
+/// additive; serde default keeps earlier declarations readable). The
+/// cursor's move REPLACES that point of the declared design: the drive
+/// segment's named end follows the cursor and the section re-derives per
+/// the record model's own laws (the run becomes the station span, the
+/// gradient pair and the implied vertex radius re-derive per the section's
+/// species), the joints re-declare downstream from the engine's own
+/// sampling, and the chain's own audit gates every move's design. The host
+/// serves only what it declares here: a drive the host cannot serve (the
+/// plan plane, the START side, a segment index out of the descriptor's
+/// range) keeps the v12 streaming path, with one headline in the error
+/// queue naming the constraint. Future drives append as NEW serde-default
+/// fields on this struct (never new positions inside it) so older hosts
+/// deserialize them harmlessly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginGripDrive {
+    /// Zero-based index into the descriptor chain's segments.
+    pub segment: u32,
+    /// Whether the grip re-anchors that segment's START point; `false`
+    /// names the segment's end. The host currently serves the END side
+    /// only (an END-point drag fully re-derives the section per its own
+    /// record-model laws); a declared START side keeps the streaming path
+    /// until a host release serves it.
+    pub at_start: bool,
 }
 
 /// One declared class parameter (API v14, additive): a name, a value kind,
@@ -2079,6 +2123,17 @@ pub enum PluginDisplayDescriptor {
     // New descriptor kinds go after the existing ones: inserting one earlier
     // would make a plugin built against the previous API send its kind and
     // have the host read it as something else.
+}
+
+impl PluginDisplayDescriptor {
+    /// (API v14, additive) A stable diagnostic label for the error queue and
+    /// the logs. Later kinds append their arm here (the law: kinds append at
+    /// the END only).
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            Self::ParametricChain(_) => "ParametricChain",
+        }
+    }
 }
 
 /// One XRecord addressed by dictionary path + name (API v13, additive).

@@ -1300,6 +1300,7 @@ mod tests {
                         preview: Vec::new(),
                         live_entities: Vec::new(),
                         descriptor: None,
+                        descriptor_tolerance: None,
                     }),
                 },
             )

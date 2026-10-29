@@ -260,6 +260,7 @@ mod tests {
                 preview: Vec::new(),
                 live_entities: Default::default(),
                 descriptor: Default::default(),
+                descriptor_tolerance: Default::default(),
             })),
             8
         );
@@ -352,6 +353,7 @@ mod tests {
                 )),
             )],
             descriptor: None,
+            descriptor_tolerance: None,
         });
         let bytes = bincode::serialize(&answer).unwrap();
         let got: HostResponse = bincode::deserialize(&bytes).unwrap();
@@ -400,6 +402,7 @@ mod tests {
             preview: Vec::new(),
             live_entities: Default::default(),
             descriptor: Default::default(),
+            descriptor_tolerance: Default::default(),
         });
         let bytes = bincode::serialize(&old).unwrap();
         let got: HostResponse = bincode::deserialize(&bytes).unwrap();

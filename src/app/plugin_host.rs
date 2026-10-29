@@ -15828,6 +15828,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
             grip_schema: vec![ocs_plugin_api::host::PluginGripSchemaEntry {
                 grip_id: 1,
                 param_name: "peak_gradient".to_string(),
+                drives: None,
             }],
             parameters: vec![],
         }
@@ -15879,6 +15880,7 @@ step('undo_move', lambda: M.move([u], (0, 0, 0), (7, 0, 0)))
         dup.grip_schema.push(ocs_plugin_api::host::PluginGripSchemaEntry {
             grip_id: 1,
             param_name: "other".to_string(),
+            drives: None,
         });
         assert!(host.register_plugin_class("CVIFC", &dup).is_err());
         assert_eq!(host.app.tabs[0].plugin_classes.total(), 1);
