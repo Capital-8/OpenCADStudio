@@ -184,6 +184,12 @@ pub(crate) const DATA_LINK_DICTIONARY: &str = "ACAD_DATALINK";
 pub(crate) const EXCEL_LINK_ADAPTER: &str = "AcExcel";
 /// Data adapter of the links a data extraction table keeps to its settings.
 pub(crate) const EXTRACTION_LINK_ADAPTER: &str = "OpenCADStudio.DataExtraction.DataLinkAdapter";
+
+/// Whether a link adapter is a data extraction one: ours, or the adapter
+/// other extraction tools file their links under (`...DataExtraction.DxDataLinkAdapter`).
+fn is_extraction_adapter(adapter: &str) -> bool {
+    adapter == EXTRACTION_LINK_ADAPTER || adapter.ends_with(".DataExtraction.DxDataLinkAdapter")
+}
 /// Data-link option: keep a cached copy of the source data.
 pub(crate) const LINK_OPTION_PERSIST_CACHE: i32 = 0x1;
 /// Update-option bits.
@@ -463,7 +469,7 @@ fn resolve_link_path(doc: &Document, link: &DataLink) -> PathBuf {
 
 /// What a link takes from its source, as the manager describes it.
 fn link_details(doc: &Document, link: &DataLink) -> String {
-    if link.data_adapter == EXTRACTION_LINK_ADAPTER {
+    if is_extraction_adapter(&link.data_adapter) {
         return crate::t!("Data extraction settings").into_owned();
     }
     let (sheet, kind, range) = link_selection(doc, link);
@@ -919,7 +925,7 @@ pub(crate) fn add_extraction_link(doc: &mut Document, settings: &str) -> Handle 
 /// The settings file of a data extraction link.
 pub(crate) fn extraction_link_settings(doc: &Document, handle: Handle) -> Option<String> {
     data_link(doc, handle)
-        .filter(|link| link.data_adapter == EXTRACTION_LINK_ADAPTER)
+        .filter(|link| is_extraction_adapter(&link.data_adapter))
         .map(|link| link.connection_string.clone())
 }
 
