@@ -483,7 +483,7 @@ pub const COORDINATES: &[(&str, u8)] = &[("X, Y, Z", 7), ("X, Y", 3), ("X", 1), 
 
 /// Object properties that are points. Their fields read the property the
 /// way the Properties palette does (`AcObjProp.16.2`), in the current UCS,
-/// as AutoCAD's level marks do.
+/// as level marks do.
 pub const POINT_PROPERTIES: &[&str] = &[
     "Center",
     "EndPoint",
@@ -1900,7 +1900,7 @@ mod tests {
 
     #[test]
     fn a_level_mark_keeps_its_ucs_coordinate_and_prefix() {
-        // AutoCAD's level mark: the end point's Y in the current UCS, after "+".
+        // A level mark: the end point's Y in the current UCS, after "+".
         let code = "\\AcObjProp.16.2 Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu6%pt2%ps[+,]\"";
         let line = codec::Handle::new(0x2A);
         let props = ["Center", "EndPoint", "Length", "StartPoint"];
