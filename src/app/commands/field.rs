@@ -613,4 +613,40 @@ mod tests {
         };
         assert_eq!(shown.value, "4.000");
     }
+
+    #[test]
+    fn ok_on_an_unchanged_level_mark_keeps_its_format() {
+        use codec::entities::Line;
+        use codec::types::Vector3;
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        let i = app.active_tab;
+        let document = &mut app.tabs[i].scene.document;
+        let line = document
+            .add_entity(EntityType::Line(Line::from_points(
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(10.0, 3.5, 0.0),
+            )))
+            .unwrap();
+        let text = document.add_entity(EntityType::MText(Box::new(MText::new()))).unwrap();
+        let code = "\\AcObjProp.16.2 Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pt2%pr2%ps[+,]\"";
+        crate::entities::field::set_text_field(
+            document,
+            text,
+            Some((code.to_string(), vec![line])),
+            "+3.50",
+        );
+
+        let _ = app.begin_text_edit(text);
+        assert!(app.field_dialog.is_some(), "the Field dialog opens");
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+        let (written, objects) =
+            crate::entities::field::whole_text_field(&app.tabs[i].scene.document, text).unwrap();
+        assert_eq!(written, code);
+        assert_eq!(objects, vec![line]);
+        let Some(EntityType::MText(shown)) = app.tabs[i].scene.document.get_entity(text) else {
+            panic!("the text stays");
+        };
+        assert_eq!(shown.value, "+3.50");
+    }
 }

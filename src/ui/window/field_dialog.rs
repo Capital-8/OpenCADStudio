@@ -1679,3 +1679,43 @@ pub fn view<'a>(
     .width(sizing.width)
     .into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{FieldDialogState, FieldTarget};
+
+    /// Open `code` in the dialog as the edit of an existing field would, and
+    /// give back the code the dialog writes when nothing is changed.
+    fn reopened(code: &str, objects: &[codec::Handle], props: &[&'static str]) -> String {
+        let mut state = FieldDialogState::new(FieldTarget::NewText);
+        if let Some(property) = state.seed_from_code(code, objects) {
+            state.object = Some((objects[0], "Line".into()));
+            state.object_props = props.to_vec();
+            state.object_prop = props.iter().copied().find(|p| *p == property);
+        }
+        let (written, written_objects) = state.code();
+        assert_eq!(written_objects, objects);
+        written
+    }
+
+    #[test]
+    fn a_level_mark_keeps_its_ucs_coordinate_and_prefix() {
+        // AutoCAD's level mark: the end point's Y in the current UCS, after "+".
+        let code = "\\AcObjProp.16.2 Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu6%pt2%ps[+,]\"";
+        let line = codec::Handle::new(0x2A);
+        let props = ["Center", "EndPoint", "Length", "StartPoint"];
+        assert_eq!(reopened(code, &[line], &props), code);
+    }
+
+    #[test]
+    fn a_formula_keeps_its_conversion_factor_and_separators() {
+        for code in [
+            // A door width in metres shown in centimetres.
+            "\\AcExpr (0.9*1) \\f \"%lu2%pr0%ct8[100]\"",
+            "\\AcExpr (1234.5) \\f \"%lu2%pr2%ds44%th46\"",
+            "\\AcExpr (74.08) \\f \"%lu2%pr1%ps[,m²]\"",
+        ] {
+            assert_eq!(reopened(code, &[], &[]), code);
+        }
+    }
+}
