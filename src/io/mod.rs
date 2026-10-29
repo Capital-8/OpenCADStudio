@@ -2554,12 +2554,12 @@ fn fix_current_style_names(doc: &mut Document) {
     // them — they live in the variable dictionary as DICTIONARYVAR entries
     // keyed "CTABLESTYLE" / "CMLEADERSTYLE". Resolve from there when present;
     // a missing entry simply leaves the existing value untouched.
-    if let Some(v) = vardict_value(doc, "CTABLESTYLE") {
+    if let Some(v) = drawing_variable(doc, "CTABLESTYLE") {
         if !v.is_empty() {
             doc.header.current_table_style_name = v;
         }
     }
-    if let Some(v) = vardict_value(doc, "CMLEADERSTYLE") {
+    if let Some(v) = drawing_variable(doc, "CMLEADERSTYLE") {
         if !v.is_empty() {
             doc.header.current_mleader_style_name = v;
         }
@@ -2567,48 +2567,21 @@ fn fix_current_style_names(doc: &mut Document) {
     reflect_sketch_settings(doc);
 }
 
-/// Find the handle of the `DictionaryVariable` registered under `name` in any
-/// of the document's dictionaries (the variable dictionary).
-fn vardict_handle(doc: &Document, name: &str) -> Option<codec::Handle> {
-    use codec::objects::ObjectType;
-    doc.objects.values().find_map(|o| {
-        let entries = match o {
-            ObjectType::Dictionary(d) => &d.entries,
-            ObjectType::DictionaryWithDefault(d) => &d.entries,
-            _ => return None,
-        };
-        entries
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, h)| *h)
-    })
-}
-
-/// Look up a system-variable value stored in the document's variable
-/// dictionary.
-fn vardict_value(doc: &Document, name: &str) -> Option<String> {
-    use codec::objects::ObjectType;
-    let handle = vardict_handle(doc, name)?;
-    match doc.objects.get(&handle) {
-        Some(ObjectType::DictionaryVariable(v)) => Some(v.value.clone()),
-        _ => None,
-    }
-}
-
+/// A system variable stored in the drawing's variable dictionary.
 pub(crate) fn drawing_variable(doc: &Document, name: &str) -> Option<String> {
-    vardict_value(doc, name)
+    doc.drawing_variable(name).map(str::to_string)
 }
 
 fn reflect_sketch_settings(doc: &mut Document) {
-    let sketch_type = vardict_value(doc, "SKPOLY")
+    let sketch_type = drawing_variable(doc, "SKPOLY")
         .and_then(|value| value.parse::<i16>().ok())
         .unwrap_or(doc.header.sketch_type)
         .clamp(0, 2);
-    let increment = vardict_value(doc, "SKETCHINC")
+    let increment = drawing_variable(doc, "SKETCHINC")
         .and_then(|value| value.parse::<f64>().ok())
         .filter(|value| value.is_finite() && *value > 0.0)
         .unwrap_or(doc.header.sketch_increment);
-    let tolerance = vardict_value(doc, "SKTOLERANCE")
+    let tolerance = drawing_variable(doc, "SKTOLERANCE")
         .and_then(|value| value.parse::<f64>().ok())
         .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
         .unwrap_or(doc.header.sketch_tolerance);
@@ -2628,40 +2601,9 @@ fn reflect_sketch_settings(doc: &mut Document) {
 /// Write a drawing variable, creating the variable dictionary and record when
 /// needed so new drawings preserve the value too.
 pub(crate) fn set_drawing_variable(doc: &mut Document, name: &str, value: &str) {
-    use codec::objects::{Dictionary, DictionaryVariable, ObjectType};
-    if let Some(h) = vardict_handle(doc, name) {
-        if let Some(ObjectType::DictionaryVariable(v)) = doc.objects.get_mut(&h) {
-            v.value = value.to_string();
-        }
-        return;
-    }
-
-    let root = crate::scene::annotative::root_named_dict_handle(doc);
-    let variable_dictionary = crate::scene::annotative::as_dict(doc, root)
-        .and_then(|dictionary| dictionary.get("AcDbVariableDictionary"))
-        .filter(|handle| matches!(doc.objects.get(handle), Some(ObjectType::Dictionary(_))))
-        .unwrap_or_else(|| {
-            let handle = doc.allocate_handle();
-            let mut dictionary = Dictionary::new();
-            dictionary.handle = handle;
-            dictionary.owner = root;
-            doc.objects
-                .insert(handle, ObjectType::Dictionary(dictionary));
-            if let Some(ObjectType::Dictionary(root_dictionary)) = doc.objects.get_mut(&root) {
-                root_dictionary.add_entry("AcDbVariableDictionary", handle);
-            }
-            handle
-        });
-
-    let handle = doc.allocate_handle();
-    let mut variable = DictionaryVariable::new(name, value);
-    variable.handle = handle;
-    variable.owner_handle = variable_dictionary;
-    doc.objects
-        .insert(handle, ObjectType::DictionaryVariable(variable));
-    if let Some(ObjectType::Dictionary(dictionary)) = doc.objects.get_mut(&variable_dictionary) {
-        dictionary.add_entry(name, handle);
-    }
+    // The codec follows the header's root pointer; repair a stale one first.
+    crate::scene::annotative::root_named_dict_handle(doc);
+    doc.set_drawing_variable(name, value);
 }
 
 pub(crate) fn set_sketch_settings(
@@ -2693,7 +2635,7 @@ pub(crate) fn set_sketch_settings(
 /// system variable (stored in the variable dictionary as a `DICTIONARYVAR`).
 /// `None` when the file recorded no current tab.
 pub fn saved_active_layout(doc: &Document) -> Option<String> {
-    vardict_value(doc, "CTAB").filter(|s| !s.is_empty())
+    drawing_variable(doc, "CTAB").filter(|s| !s.is_empty())
 }
 
 /// Record `name` as the active layout tab (`CTAB`) so the next save round-trips
