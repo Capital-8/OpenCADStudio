@@ -40,9 +40,10 @@
 //!   cos(theta(u))); the vertical parabola h(u) = h0 + g0*u + u^2/(2*R)
 //!   realizes the record model's mean-gradient law h(L) = h0 + L*(g1+g2)/2
 //!   exactly;
-//! - every blend law integrates to half the curvature change over the
+//! - every IFC blend law integrates to half the curvature change over the
 //!   segment (W(1) = 1/2), so a transition deflects through L/(2*R) exactly
-//!   like the clothoid law.
+//!   like the clothoid law; a Declared Piecewise table's deflection is its
+//!   OWN integral W(1) — only the endpoint VALUE is the declared k1.
 //!
 //! Chain discipline: the declared data is validated BEFORE any geometry is
 //! built (finite fields, non-negative lengths, radii present where the
@@ -470,7 +471,8 @@ fn declared_ramp_value(ramp: &DeclaredKappaRamp, xi: f64) -> f64 {
 /// The blend integral W(xi) of a piecewise-linear ramp through the active
 /// knots: per interval the quadratic r0*h + slope*h^2/2 accumulation. The
 /// active slice is validated at declaration (first = (0, 0), last =
-/// (1, 1), ascending), so W(1) = 1/2 holds by construction.
+/// (1, 1), ascending, values in [0, 1]); the table's W(1) is its own
+/// integral — 1/2 only for the IFC-shaped ramps.
 fn piecewise_value(knots: &[(f64, f64)], xi: f64) -> f64 {
     let mut acc = 0.0;
     for pair in knots.windows(2) {
@@ -574,7 +576,6 @@ fn validate_declared_ramp(ramp: &DeclaredKappaRamp) -> Result<(), String> {
     }
     Ok(())
 }
-
 
 /// The slice of the piecewise knot table that is active law; `None` when
 /// the count is not a valid knot count.
@@ -764,19 +765,25 @@ fn evaluate_profile_blend(
     u: f64,
     ramp: Option<DeclaredKappaRamp>,
 ) -> ParametricSample {
-    let theta_u = match ramp {
-        None => profile_clothoid_theta(vitals, u),
-        Some(ramp) => {
-            let xi = if vitals.length > 0.0 { u / vitals.length } else { 0.0 };
+    // The realized heading law: the vertical clothoid's shape for the
+    // built-in ramp (None), the declared ramp otherwise — the same
+    // theta0 + k0*u + (k1-k0)*L*W(u/L) run law either way.
+    let theta_of = |t: f64| match ramp {
+        None => profile_clothoid_theta(vitals, t),
+        Some(r) => {
+            let xi = if vitals.length > 0.0 { t / vitals.length } else { 0.0 };
             vitals.theta_start
-                + vitals.kappa_start * u
+                + vitals.kappa_start * t
                 + (vitals.kappa_end - vitals.kappa_start)
                     * vitals.length
-                    * declared_ramp_integral(&ramp, xi)
+                    * declared_ramp_integral(&r, xi)
         }
     };
+    let theta_u = theta_of(u);
     let swing = theta_u - segment.start_gradient.atan();
-    let height = segment.start_point[1] + integrate(|t| profile_clothoid_theta(vitals, t).tan(), u, swing);
+    // The height integrates the REALIZED slope — the declared law's own
+    // heading; a ramp-blind integrand would restate the clothoid's height.
+    let height = segment.start_point[1] + integrate(|t| theta_of(t).tan(), u, swing);
     let gradient = theta_u.tan();
     let norm = (1.0 + gradient * gradient).sqrt();
     ParametricSample {
@@ -2739,6 +2746,53 @@ mod tests {
     }
 
     #[test]
+    fn declared_vertical_blend_height_follows_the_ramp() {
+        // REGRESSION (the fresh-eyes review): the height must integrate the
+        // DECLARED heading's slope — a ramp-blind integrand restated the
+        // clothoid's height (~1 m off at the end for this fixture), which no
+        // heading-only pin could catch. The oracle integrates the realized
+        // slope independently (a fine trapezoid over the closed-form law).
+        let mut blend = profile_segment(
+            ParametricSpecies::Vertical(VerticalSegmentSpecies::Declared(
+                DeclaredKappaRamp::Sine,
+            )),
+            [0.0, 0.0],
+            100.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        );
+        blend.end_curvature = 0.004;
+        // The realized heading of the Sine ramp: theta(t) = 0.4 * W(t/100),
+        // W(ksi) = ksi^2/2 + (cos(2*pi*ksi) - 1)/(4*pi^2).
+        let law = |t: f64| {
+            let xi = t / 100.0;
+            0.004 * 100.0 * (xi * xi * 0.5 + ((TWO_PI * xi).cos() - 1.0) / (4.0 * PI * PI))
+        };
+        let height_at = |u: f64| {
+            let steps = 200_000usize;
+            let h = u / steps as f64;
+            let mut acc = (law(0.0).tan() + law(u).tan()) * 0.5;
+            for i in 1..steps {
+                acc += law(i as f64 * h).tan();
+            }
+            acc * h
+        };
+        for u in [25.0, 50.0, 75.0, 100.0] {
+            let sample = sample_chain(&single_chain(ParametricPlane::Profile, &blend), u)
+                .unwrap()
+                .unwrap();
+            let expected = height_at(u);
+            assert!(
+                (sample.point[1] - expected).abs() < 1e-7,
+                "the declared vertical's height at u = {u} drifts from the ramp's own law: {} vs {expected}",
+                sample.point[1]
+            );
+        }
+    }
+
+    #[test]
     fn declared_blend_refusals() {
         // The Declared head's validation refusals, each before any change.
         let mut knots = [(0.0, 0.0); 6];
@@ -2842,8 +2896,6 @@ mod tests {
         audit_chain(&chain).expect("the mixed chain audits green");
     }
 
-    /// A one-segment chain around `segment` (the Declared laws' fixture
-    /// wrapper).
     /// A one-segment chain around `segment` (the Declared laws' fixture
     /// wrapper), in the segment's plane.
     fn single_chain(plane: ParametricPlane, segment: &ParametricSegment) -> ParametricChain {

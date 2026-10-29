@@ -1816,9 +1816,10 @@ pub enum HorizontalSegmentSpecies {
 /// The declared curvature-ramp vocabulary (the Declared species' head,
 /// executed as declared data by the host's generic Gaussian integrator):
 /// kappa(xi) = k0 + (k1-k0) * ramp(xi), xi = s/L in [0, 1]. Every entry
-/// satisfies ramp(0) = 0, ramp(1) = 1, ramp(xi) in [0, 1], so the blend
-/// integral W has W(1) = 1/2 — a straight-to-curve transition deflects
-/// through L/(2R), the IFC lexics' own normalization.
+/// satisfies ramp(0) = 0, ramp(1) = 1, ramp(xi) in [0, 1]. The six fixed
+/// ramps integrate to W(1) = 1/2 — a straight-to-curve transition deflects
+/// through L/(2R), the IFC lexics' own normalization; a Piecewise table's
+/// deflection is its OWN integral W(1) — only the endpoint VALUE is k1.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum DeclaredKappaRamp {
     /// kappa(xi) = xi (the straight-to-circle ramp; the CLOTHOID shape).
@@ -1841,7 +1842,7 @@ pub enum DeclaredKappaRamp {
     /// `count` knots of `knots` are active (1..=6; the rest are padding):
     /// knots[0] = (0.0, 0.0) and knots[count-1] = (1.0, 1.0) are required,
     /// xi strictly ascending, every active ramp value finite in [0, 1].
-    /// The genuinely-custom blend primitive: the host intergrates through
+    /// The genuinely-custom blend primitive: the host integrates through
     /// these knots; the shape itself is plugin-owned data.
     Piecewise {
         /// The active knot count.
