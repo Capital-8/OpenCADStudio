@@ -505,31 +505,42 @@ generalize. One law governs both: **the record layer is the file's only
 truth, the host derives the display, and the plugins never run the
 derivation math.**
 
-**Parametric chains (v14).** `stage_parametric_chain(reference, chain,
-tolerance)` carries declared parameters only — species enum (the IFC 4.3.2.0
-alignment segment species: 9 horizontal, 4 vertical), start point, start
-direction (radians, ±2π-legal), signed radii, gradients, lengths, curvature
-ends — never evaluated geometry. The host validates every segment against
-its species' lexics law, then audits seams *at the record-model tolerances*
-(the evaluated end of segment i must restate segment i+1's declared start —
-point, direction/gradient); a refusal names the audited pair and changes
-nothing (no entities, no undo step). Passing designs stage as exact carriers
-(`Line`/`Arc`/exact degree-2·3 clamped splines — e.g. the cubic parabola y =
-x³/(6·R·L) as a true cubic Bézier) or as `LwPolyline` chords refined to the
-declared tolerance (every transcendental species: the transition-curve
-integrals run through a hard-coded 16-node Gauss–Legendre table, and the
-Fresnel series is the oracle). The staged set is **reference-only** (picks
-pass through, box selections skip it, no grips/edges; the designation
-applies through the same pending-scope machinery as `set_reference_only`)
-and the undo composition is the entity-write contract: the plugin's open
-`push_undo` scope is joined, otherwise one labeled step ("Stage parametric
-chain"). `sample_parametric(chain, s)` exposes the same engine as a pure
-read (point/direction at chain position *s*; validates + audits per call;
-no document state, no undo, no publish). Regulations: `MAX_PLUGIN_LIVE_
-ENTITIES` caps the staged set; a zero-geometry chain answers `Ok(vec![])`
-and records nothing. The lane's bench (`cargo bench --bench
-parametric_display_staging`) pins the budgets: 50-segment staging far under
-5 ms, sampling at sub-µs scale.
+**Parametric chains (v14, the v2 shapes).** `stage_parametric_chain(reference, chain,
+tolerance)` carries the record layer's declared parameters only — curve
+definitions (`length`, the driving-quantity `ramp`, optional `cross_slope`
+data) plus the continuity fields (start point, start direction radians,
+±2π-legal) — never evaluated geometry. The driving quantity is the plan
+curvature in the plan plane and the profile slope in the profile plane, and
+the ramp is declared DATA (`Ramp::Polynomial` at most cubic, `Ramp::Piecewise`
+of up to six ascending knots in [0,1], or `Ramp::Sampled` of up to 4096
+slots — the vocabulary any alignment library restates its own laws with).
+The host knows no species and validates the STRUCTURE only; the record-model
+consistency checks are the declaring plugin's own. The host evaluates, then
+audits seams *at the record-model tolerances* (the evaluated end of segment
+i must restate segment i+1's declared start — point, direction/gradient,
+where the profile's declared start slope is the next ramp's own start
+value); a refusal names the audited pair and changes nothing (no entities,
+no undo step). Passing designs stage as exact carriers derived GENERICALLY
+(a constant plan curvature as `Line` (zero) or `Arc`; a profile ramp that
+is an at-most-quadratic polynomial as an exact clamped Hermite spline of
+degree up to 3 — one from-end-states builder whose degree-2 mid control
+rides the start-tangent line's mid value, exactly the mean-gradient law) or
+as `LwPolyline` chords refined to the declared tolerance (every table law
+and every law without an exact generic carrier: the plan law integrates via
+a hard-coded 16-node Gauss–Legendre table, the Fresnel series is the tests'
+independent oracle). The staged set is **reference-only** (picks pass
+through, box selections skip it, no grips/edges; the designation applies
+through the same pending-scope machinery as `set_reference_only`) and the
+undo composition is the entity-write contract: the plugin's open `push_undo`
+scope is joined, otherwise one labeled step ("Stage parametric chain").
+`sample_parametric(chain, s)` exposes the same engine as a pure read
+(point/direction at chain position *s*; validates + audits per call; no
+document state, no undo, no publish). Regulations: `MAX_PLUGIN_LIVE_ENTITIES`
+caps the staged set; an empty chain refuses. The lane's bench
+(`cargo bench --bench parametric_display_staging`) pins the budgets:
+50-segment staging far under 5 ms, sampling at sub-µs scale, and the
+Sampled-arm reads ride the stage-time cumulative-integral table (a lookup
+plus the moved tail's exact trapezoid per re-integration).
 
 **Plugin class objects.** `register_plugin_class(plugin_id,
 declaration)` declares a plugin-owned entity class: a stable identity key
@@ -618,40 +629,35 @@ row commits through the same one-undo-step write; host-staged
 (reference-only) instances render read-only; the host never invents
 semantics for a name or a value kind the declaration does not spell.
 
-**The declared curvature-law kernel.** The blend species are not hard-coded
-math walls: the plan's transcendental path is one generic Gauss–Legendre
-executor over a per-species heading law, and the Declared species head
-(`HorizontalSegmentSpecies::Declared` / `VerticalSegmentSpecies::Declared`
-with `DeclaredKappaRamp`) lets a plugin declare that law as DATA — the
-vocabulary the IFC blends restate exactly (Linear/Bloss/Cosine/Sine/Helmert/
-Viennese, whose tests are the oracles) plus a bounded piecewise-linear
-primitive (up to six knots) for genuinely custom shapes. kappa(s) = k0 +
-(k1-k0) * ramp(s/L): k0 = 1/start_radius (0 = straight entry), k1 =
-end_curvature declared directly (a Declared plan blend may end flat; the
-vertical Declared keeps the vertical clothoid's record rule that k1 != 0 —
-k1 = 0 restates PARABOLICARC). The audit, the sloped-range/finite gates,
-the seam laws, the carriers and the caps apply unchanged, because they
-live around the head, not in it; a Declared plan blend's deflection is its
-own ramp's integral (only the endpoint value is the declared k1 — the 1/2
-normalization is the IFC species' own property). The banked-bend
-gravity-centre correction applies verbatim to the Declared Viennese ramp
-(the declared gravity_height/bank_change pair drives it). New blend
-shapes — the cant family, custom transitions — join as declared data,
-never as per-shape host code.
+**Ramps as declared data — the generic kernel (v2).** The host carries no
+per-species math wall: the plan's transcendental path is one generic
+Gauss–Legendre executor over the declared ramp, and the three ramp arms are
+the whole vocabulary — every alignment library's laws restate into them as
+DATA (the civil-ifc plugin restates the IFC blend lexics: the spirals as
+linear/polynomial curvature ramps, the cosine/sine/bloss/helmert/viennese
+half-waves as dense sampled or low-degree polynomial tables, bespoke blend
+shapes as piecewise tables; the record-model consistency checks for those
+readings are the plugin's own). The driving ramp IS the law: kappa = ramp
+for the plan plane, gradient = ramp for the profile; a law's deflection is
+its own ramp's integral W(1), nothing normalized behind the declaration.
+Bank/cant corrections do not bend the plane curve — the secondary sheet
+rides along as declared `cross_slope` data. New blend shapes — the cant
+family, custom transitions — join as declared data, never as per-shape
+host code.
 
 **The descriptor-backed grip drag.** The drag pipeline's host-local tier
-(API v14): a class's grip schema may declare a drive —
-`PluginGripSchemaEntry.drives`, the design point the grip re-anchors —
-and the Begin answer may hand the host the live design plus the same
+(api 14): a class's grip schema may declare a drive —
+`PluginGripSchemaEntry.drives`, a `PluginGripAnchor` naming the segment,
+its end and the record-model anchor law the grip re-anchors — and the
+Begin answer may hand the host the live design plus the same
 tolerance the plugin staged its instance with. When the whole declaration
-is serviceable (the profile chain, the END side of a declared segment),
-the host re-derives the display set LOCALLY per coalesced cursor move:
-the drive segment's end follows the cursor, the section re-derives per
-its species' own record-model laws (the run becomes the station span;
-the mean-gradient and vertex-radius laws in the profile; the
-curvature-end species solve deterministically through the engine's own
-sampling), the downstream joints re-declare from the sampled joints, and
-the chain's own audit gates every move's design. No Move frames cross
+is serviceable (the profile chain, the END side), the host re-derives the
+display set LOCALLY per coalesced cursor move through the declared anchor
+law's own generic solve: the ramp's end-sensitive value re-derives per its
+arm's closed integral gain, the EndCurvatureScale route bisects with the
+same 16-doubling + 60-bisect discipline, the downstream joints re-declare
+from the engine's own sampling (each arm's shape preserved), and the
+chain's own audit gates every move's design. No Move frames cross
 the IPC; the per-move restage patches the staged handles in place
 through the visual-only dynamic phase (originals stashed once, zero
 history steps, the byte-identical restore before the settle); the
@@ -864,8 +870,10 @@ Done:
       of issue #29; this line previously and incorrectly listed it as not yet
       started.
 - [x] Batched record walks + dirty regions + deterministic attach (v13).
-- [x] Parametric display staging + sampling: IFC 4.3.2.0 alignment species,
-      audited seams, exact carriers, reference-only derived display (v14).
+- [x] Parametric display staging + sampling: ramps declared as data
+      (polynomial/piecewise/sampled), audited seams, exact carriers, 
+      reference-only derived display (v14; the species vocabulary lives in
+      plugins — the v2 reshaping of the v14 envelope).
 - [x] Plugin class objects: tab-scoped class registry, host-evaluated design
       descriptors (the chain kind first), XDATA identity stamps (squashed
       into the API v14 arc); the grip-edit descriptor hook rides
@@ -874,20 +882,23 @@ Done:
 Landed in this branch:
 
 - [x] Descriptor-backed grip drags: the Begin descriptor consumed per
-      coalesced move (zero Move frames; the declared `drives` row + the
-      response's per-move tolerance engage the profile-chain END re-anchor;
-      unserved declarations keep the v12 streaming path) — the drag's
-      settle stays the plugin's one write window and the session tests
-      mirror the grip-edit restage arc.
+      coalesced move (zero Move frames; the declared `drives` row — the
+      v2 `PluginGripAnchor` with its anchor law — plus the response's
+      per-move tolerance engage the profile-chain END re-anchor through
+      the generic solver; unserved declarations keep the v12 streaming
+      path) — the drag's settle stays the plugin's one write window and
+      the session tests mirror the grip-edit restage arc.
 - [x] Properties-panel parameter editing for plugin class entities: a
       `PluginClassParameter` schema on the declaration, the panel section
       bound to selected class-stamped entities, edits through the session's
       `update_plugin_class_instance_parameter` (XRecord update; one undo
       step), the plugin re-stages from the record-dirty notification.
-- [x] The Declared curvature-law kernel: the blend species' formulas
-      collapse into one shared ramp table the Declared species head
-      declares as data — the IFC blends restate exactly (their tests are
-      the oracles) and custom blends join without host-code changes.
+- [x] The generic ramp kernel (v2): the ramp arms are the whole declared
+      vocabulary (polynomial/piecewise/sampled); the exact carriers derive
+      generically (the constant plan classes as Line/Arc, the profile
+      polynomial-slope class as the one from-end-states Hermite), table
+      laws stage measured chords, and the Sampled arm carries the
+      stage-time cumulative-integral table.
 
 ---
 
