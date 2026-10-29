@@ -12172,6 +12172,17 @@ impl OpenCADStudio {
                     )
                 }
             }
+            Message::PrintAllPdfTo(path) => {
+                // DXEVAL: publishing compares extraction tables as it starts.
+                match self.evaluate_extraction_tables(
+                    self.active_tab,
+                    crate::app::commands::extraction_eval::EVENT_PUBLISH,
+                    Some(Message::PrintAllPdfTo(path.clone())),
+                ) {
+                    Some(task) => task,
+                    None => self.on_print_all_pdf_path_some(path),
+                }
+            }
             Message::PrintAllPdfPath(None) => Task::none(),
             Message::PrintAllPdfPath(Some(path)) => self.on_print_all_pdf_path_some(path),
             Message::PrintAllPrint => {
