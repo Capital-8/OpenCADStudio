@@ -65,6 +65,24 @@ pub fn explode_polyline_segments(entity: &EntityType) -> Vec<EntityType> {
 /// Decompose an entity into its constituent simple entities.
 /// Returns an empty vec if the entity cannot be exploded.
 pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityType> {
+    explode_entity_in_context(entity, document, None)
+}
+
+fn explode_entity_in_context(
+    entity: &EntityType,
+    document: &Document,
+    annotation_scale_handle: Option<Handle>,
+) -> Vec<EntityType> {
+    let contextual = if matches!(entity, EntityType::MultiLeader(_)) {
+        crate::scene::annotative::entity_for_annotation_context(
+            document,
+            entity,
+            annotation_scale_handle,
+        )
+    } else {
+        std::borrow::Cow::Borrowed(entity)
+    };
+    let entity = contextual.as_ref();
     match entity {
         EntityType::Line(line) => {
             let Some(association) =
@@ -114,7 +132,9 @@ pub fn explode_entity(entity: &EntityType, document: &Document) -> Vec<EntityTyp
         EntityType::MLine(ml) => explode_mline(ml),
         EntityType::Dimension(dim) => explode_dimension(dim, document),
         EntityType::Leader(leader) => explode_leader(leader, document),
-        EntityType::MultiLeader(leader) => explode_multileader(leader, document),
+        EntityType::MultiLeader(leader) => {
+            explode_multileader(leader, document, leader.context.scale_factor as f32)
+        }
         EntityType::MText(t) => crate::entities::mtext::explode_mtext(t, document),
         EntityType::Region(region) => explode_region(region),
         EntityType::Hatch(hatch) => explode_hatch(hatch),
@@ -134,10 +154,20 @@ pub fn plan_explode(
     selected: &[(Handle, &EntityType)],
     doc: &Document,
 ) -> Vec<(Handle, Vec<EntityType>)> {
+    plan_explode_in_context(selected, doc, None)
+}
+
+/// Bake multileaders from their context for the given annotation scale, at that
+/// context's stored sizes (AutoCAD does not rescale them to the current scale).
+pub fn plan_explode_in_context(
+    selected: &[(Handle, &EntityType)],
+    doc: &Document,
+    annotation_scale_handle: Option<Handle>,
+) -> Vec<(Handle, Vec<EntityType>)> {
     selected
         .iter()
         .filter_map(|(handle, entity)| {
-            let pieces = explode_entity(entity, doc);
+            let pieces = explode_entity_in_context(entity, doc, annotation_scale_handle);
             if pieces.is_empty() {
                 None
             } else {
@@ -186,7 +216,11 @@ fn explode_leader(leader: &codec::entities::Leader, doc: &Document) -> Vec<Entit
     explode_leader_wire(&model, common)
 }
 
-fn explode_multileader(ml: &codec::entities::MultiLeader, doc: &Document) -> Vec<EntityType> {
+fn explode_multileader(
+    ml: &codec::entities::MultiLeader,
+    doc: &Document,
+    anno_scale: f32,
+) -> Vec<EntityType> {
     use crate::entities::multileader::{
         active_vertical_attachment, block_content_insert, mleader_v_anchor, MultiLeaderTess,
     };
@@ -201,6 +235,9 @@ fn explode_multileader(ml: &codec::entities::MultiLeader, doc: &Document) -> Vec
         let mut common = dim_common(&ml.common, 0, -1);
         common.owner_handle = Handle::NULL;
         common.reactors.clear();
+        for marker in ["AcadAnnotative", "AcAnnoPO", "AcAnnotativeData"] {
+            common.extended_data.remove_record(marker);
+        }
         if color.rgb().is_some() {
             common.color = color;
             common.color_name = None;
@@ -219,42 +256,74 @@ fn explode_multileader(ml: &codec::entities::MultiLeader, doc: &Document) -> Vec
         }
     }
     // Render only leader geometry: keep text as MTEXT and blocks as INSERTs.
-    // The document-only API bakes the active stored context at annotation scale 1.
+    // Keep path segments even when they coincide with a filled arrow's outline.
     let mut geometry = ml.clone();
     geometry.content_type = LeaderContentType::None;
-    let models = geometry.tessellate(
-        doc,
-        Handle::NULL,
-        false,
-        [1.0; 4],
-        1.0,
-        1.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        [0.0; 4],
-    );
+    geometry.context.arrowhead_size = 0.0;
+    let tessellate = |geometry: &codec::entities::MultiLeader| {
+        geometry.tessellate(
+            doc,
+            Handle::NULL,
+            false,
+            [1.0; 4],
+            1.0,
+            anno_scale,
+            None,
+            None,
+            None,
+            None,
+            None,
+            [0.0; 4],
+        )
+    };
+    let models = tessellate(&geometry);
     let mut pieces = models
         .first()
-        .map(|model| explode_leader_wire(model, common))
+        .map(|model| explode_leader_wire(model, common.clone()))
         .unwrap_or_default();
+    geometry.context.arrowhead_size = ml.context.arrowhead_size;
+    geometry.path_type = codec::entities::MultiLeaderPathType::Invisible;
+    geometry.enable_landing = false;
+    if let Some(model) = tessellate(&geometry).first() {
+        pieces.extend(explode_leader_wire(model, common));
+    }
     let ctx = &ml.context;
+    // Same stored-context correction and fallback scale as MultiLeaderTess.
+    let annotative = crate::scene::annotative::mleader_is_annotative(doc, ml);
+    let correction = if annotative && ctx.scale_factor.abs() > 1e-12 {
+        let ratio = anno_scale as f64 / ctx.scale_factor;
+        if ratio.is_finite() && ratio > 0.0 {
+            ratio
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
     if ml.content_type == LeaderContentType::MText && !ctx.text_string.is_empty() {
         let mut text = codec::entities::MText::with_value(&ctx.text_string, ctx.text_location);
+        if annotative {
+            if let Some(root) = ctx.leader_roots.first() {
+                text.insertion_point.x = root.connection_point.x
+                    + (ctx.text_location.x - root.connection_point.x) * correction;
+                text.insertion_point.y = root.connection_point.y
+                    + (ctx.text_location.y - root.connection_point.y) * correction;
+            }
+        }
         text.common = common_for(ctx.text_color);
         text.height = if ctx.text_height > 0.0 {
-            ctx.text_height
+            ctx.text_height * correction
         } else {
-            let scale = if ml.scale_factor.abs() > 1e-12 {
+            let scale = if annotative {
+                anno_scale as f64
+            } else if ml.scale_factor.abs() > 1e-12 {
                 ml.scale_factor
             } else {
                 1.0
             };
             ml.text_height * scale
         };
-        text.rectangle_width = ctx.text_width;
+        text.rectangle_width = ctx.text_width * correction;
         let td = ctx.text_direction;
         text.rotation = if td.x.abs() > 1e-9 || td.y.abs() > 1e-9 {
             td.y.atan2(td.x)
@@ -308,16 +377,115 @@ fn explode_multileader(ml: &codec::entities::MultiLeader, doc: &Document) -> Vec
             codec::entities::FlowDirectionType::ByStyle => DrawingDirection::ByStyle,
             _ => DrawingDirection::LeftToRight,
         };
+        // AutoCAD explodes the frame into its own polyline: the text box grown by the landing gap.
+        if ml.text_frame {
+            let v_anchor = [
+                MTextVAnchor::Top,
+                MTextVAnchor::Middle,
+                MTextVAnchor::Bottom,
+            ][row / 3];
+            pieces.extend(text_frame_polyline(
+                &text,
+                doc,
+                col as f32 * 0.5,
+                v_anchor,
+                ctx.landing_gap.max(0.0) * correction,
+                common_for(ctx.text_color),
+            ));
+        }
         pieces.push(EntityType::MText(Box::new(text)));
-    } else if ml.block_attributes.is_empty() {
+    } else {
         // The render helper resolves the block's extents anchor, scale and rotation.
-        // Per-instance block attribute overrides are not representable by this INSERT.
         if let Some(mut insert) = block_content_insert(doc, ml) {
             insert.common = common_for(ml.block_content_color);
+            let record = doc
+                .block_records
+                .iter()
+                .find(|r| r.name == insert.block_name);
+            let definitions: Vec<_> = record
+                .into_iter()
+                .flat_map(|r| &r.entity_handles)
+                .filter_map(|h| match doc.get_entity(*h) {
+                    Some(EntityType::AttributeDefinition(definition)) => Some(definition),
+                    _ => None,
+                })
+                .collect();
+            let transform = crate::scene::render_graph::insert_transform(doc, &insert);
+            for (index, definition) in definitions.iter().enumerate() {
+                let value = ml
+                    .block_attributes
+                    .iter()
+                    .find(|a| a.attribute_definition_handle == Some(definition.common.handle))
+                    .or_else(|| {
+                        ml.block_attributes.iter().find(|a| {
+                            a.attribute_definition_handle.is_none() && a.index as usize == index
+                        })
+                    })
+                    .map(|a| a.text.clone());
+                let mut attribute =
+                    codec::entities::AttributeEntity::from_definition(definition, value);
+                codec::Entity::apply_transform(&mut attribute, &transform);
+                insert.attributes.push(attribute);
+            }
             pieces.push(EntityType::Insert(insert));
         }
     }
     pieces
+}
+
+/// Frame `gap` outside an MTEXT's laid-out text, as AutoCAD writes it: five vertices, last = first.
+fn text_frame_polyline(
+    text: &codec::entities::MText,
+    doc: &Document,
+    h_anchor: f32,
+    v_anchor: crate::entities::text_support::MTextVAnchor,
+    gap: f64,
+    common: EntityCommon,
+) -> Option<EntityType> {
+    use crate::entities::text_support::{layout_mtext, resolve_text_style, MTextRenderOpts};
+    use codec::entities::{mtext::DrawingDirection, LineSpacingStyle, LwVertex};
+    let style = resolve_text_style(&text.style, doc);
+    let layout = layout_mtext(&MTextRenderOpts {
+        columns: Default::default(),
+        value: &text.value,
+        insertion: [0.0, 0.0, 0.0],
+        height: text.height as f32,
+        rect_w: text.rectangle_width as f32,
+        rotation: 0.0,
+        style: &style,
+        attach_h_anchor: h_anchor,
+        v_anchor,
+        line_spacing_factor: text.line_spacing_factor as f32,
+        exact_line_spacing: matches!(text.line_spacing_style, LineSpacingStyle::Exactly),
+        rectangle_height: 0.0,
+        vertical_text: matches!(text.drawing_direction, DrawingDirection::TopToBottom),
+        want_glyph_boxes: false,
+    });
+    let lb = layout.local_bounds;
+    if lb[0] > lb[2] || lb[1] > lb[3] {
+        return None;
+    }
+    let (sin, cos) = text.rotation.sin_cos();
+    let corner = |x: f32, y: f32| {
+        let (x, y) = (x as f64, y as f64);
+        LwVertex::new(codec::types::Vector2::new(
+            text.insertion_point.x + x * cos - y * sin,
+            text.insertion_point.y + x * sin + y * cos,
+        ))
+    };
+    let (g, [x0, y0, x1, y1]) = (gap as f32, lb);
+    let mut frame = LwPolyline::new();
+    frame.common = common;
+    frame.vertices = vec![
+        corner(x0 - g, y1 + g),
+        corner(x1 + g, y1 + g),
+        corner(x1 + g, y0 - g),
+        corner(x0 - g, y0 - g),
+        corner(x0 - g, y1 + g),
+    ];
+    frame.elevation = text.insertion_point.z;
+    frame.normal = text.normal;
+    Some(EntityType::LwPolyline(frame))
 }
 
 fn explode_leader_wire(
@@ -3291,6 +3459,204 @@ mod tests {
                 }
                 _ => panic!("unexpected replacement"),
             }
+        }
+    }
+
+    #[test]
+    fn multileader_explode_followup_multiple_roots_and_lines() {
+        let mut ml = explode_test_multileader();
+        ml.context.arrowhead_size = 6.0;
+        let mut root = ml.context.leader_roots[0].clone();
+        root.connection_point = Vector3::new(10.0, 0.0, 0.0);
+        root.lines[0].points = vec![Vector3::ZERO];
+        let mut extra = root.lines[0].clone();
+        extra.points = vec![Vector3::new(0.0, -10.0, 0.0)];
+        root.lines.push(extra);
+        let mut other = root.clone();
+        // This path coincides with the first arrow's upper edge; it is still a LINE.
+        other.connection_point = Vector3::new(6.0, 1.0, 0.0);
+        other.lines[1].points = vec![Vector3::new(0.0, 10.0, 0.0)];
+        ml.context.leader_roots = vec![root, other];
+        let pieces = explode_entity(
+            &EntityType::MultiLeader(Box::new(ml.clone())),
+            &Document::new(),
+        );
+        let lines: Vec<_> = pieces
+            .iter()
+            .filter_map(|e| match e {
+                EntityType::Line(l) => Some((l.start, l.end)),
+                _ => None,
+            })
+            .collect();
+        for root in &ml.context.leader_roots {
+            for line in &root.lines {
+                assert!(
+                    lines.contains(&(line.points[0], root.connection_point)),
+                    "missing leader path"
+                );
+            }
+            assert!(
+                lines.contains(&(
+                    root.connection_point,
+                    root.connection_point + Vector3::new(2.0, 0.0, 0.0)
+                )),
+                "missing landing"
+            );
+        }
+        assert_eq!(lines.len(), 6);
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|e| matches!(e, EntityType::Solid(_)))
+                .count(),
+            4
+        );
+        assert_eq!(
+            pieces
+                .iter()
+                .filter(|e| matches!(e, EntityType::MText(_)))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn multileader_explode_followup_block_attributes() {
+        use codec::entities::{multileader::BlockAttribute, AttributeDefinition};
+        let mut doc = Document::new();
+        let mut style = doc.text_styles.iter().next().unwrap().clone();
+        style.name = "LABEL_STYLE".into();
+        style.handle = doc.allocate_handle();
+        doc.text_styles.add(style).unwrap();
+        let mut record = BlockRecord::new("LABEL");
+        record.handle = doc.allocate_handle();
+        record.base_point = Vector3::new(1.0, 2.0, 0.0);
+        for tag in ["ID", "TYPE"] {
+            let mut definition = AttributeDefinition::simple(tag);
+            definition.insertion_point = Vector3::new(2.0, 2.0, 0.0);
+            definition.height = 3.0;
+            definition.text_style = "LABEL_STYLE".into();
+            let handle = doc
+                .add_entity(EntityType::AttributeDefinition(definition))
+                .unwrap();
+            record.entity_handles.push(handle);
+        }
+        let mut ml = explode_test_multileader();
+        ml.content_type = codec::entities::LeaderContentType::Block;
+        ml.context.has_block_contents = true;
+        ml.block_content_handle = Some(record.handle);
+        ml.context.block_content_location = Vector3::new(20.0, 10.0, 0.0);
+        ml.block_connection_type = codec::entities::BlockContentConnectionType::BasePoint;
+        ml.block_scale = Vector3::new(2.0, 2.0, 2.0);
+        ml.block_rotation = std::f64::consts::FRAC_PI_2;
+        let mut value = BlockAttribute::new("stored ID");
+        value.attribute_definition_handle = Some(record.entity_handles[0]);
+        let mut indexed = BlockAttribute::new("stored TYPE");
+        indexed.index = 1;
+        ml.block_attributes = vec![indexed, value];
+        doc.block_records.add(record).unwrap();
+        let pieces = explode_entity(&EntityType::MultiLeader(Box::new(ml)), &doc);
+        let insert = pieces
+            .iter()
+            .find_map(|e| match e {
+                EntityType::Insert(i) => Some(i),
+                _ => None,
+            })
+            .expect("block content must become an INSERT");
+        assert_eq!(insert.block_name, "LABEL");
+        assert_eq!(insert.insert_point, Vector3::new(20.0, 10.0, 0.0));
+        assert_eq!(insert.x_scale(), 2.0);
+        assert_eq!(insert.rotation, std::f64::consts::FRAC_PI_2);
+        assert_eq!(insert.attributes.len(), 2);
+        for (attribute, tag, value) in [
+            (&insert.attributes[0], "ID", "stored ID"),
+            (&insert.attributes[1], "TYPE", "stored TYPE"),
+        ] {
+            assert_eq!(attribute.tag, tag);
+            assert_eq!(attribute.value, value);
+            assert_eq!(attribute.text_style, "LABEL_STYLE");
+            assert!((attribute.height - 6.0).abs() < 1e-9);
+            assert!((attribute.rotation - insert.rotation).abs() < 1e-9);
+            assert!((attribute.insertion_point - Vector3::new(20.0, 12.0, 0.0)).length() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn multileader_explode_followup_text_frame() {
+        let mut ml = explode_test_multileader();
+        ml.text_frame = true;
+        ml.context.landing_gap = 1.0;
+        let pieces = explode_entity(&EntityType::MultiLeader(Box::new(ml)), &Document::new());
+        let text = pieces
+            .iter()
+            .find_map(|e| match e {
+                EntityType::MText(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            text.background_fill_flags, 0,
+            "AutoCAD keeps the frame out of the MTEXT"
+        );
+        let frame = pieces
+            .iter()
+            .find_map(|e| match e {
+                EntityType::LwPolyline(p) => Some(p),
+                _ => None,
+            })
+            .expect("the frame becomes its own polyline");
+        assert_eq!(frame.vertices.len(), 5);
+        assert_eq!(frame.vertices[0].location, frame.vertices[4].location);
+        let (p0, p2) = (frame.vertices[0].location, frame.vertices[2].location);
+        let above = p0.y - text.insertion_point.y;
+        assert!(
+            (0.9..=1.0 + 1e-9).contains(&above),
+            "frame top is the landing gap above the text: {above}"
+        );
+        assert!(p0.x < text.insertion_point.x && p2.x > text.insertion_point.x && p2.y < p0.y);
+    }
+
+    #[test]
+    fn multileader_explode_followup_annotation_scale() {
+        for annotative in [false, true] {
+            let mut ml = explode_test_multileader();
+            ml.enable_annotation_scale = annotative;
+            ml.scale_factor = 30.0;
+            ml.context.scale_factor = 4.0;
+            ml.extend_leader_to_text = true;
+            ml.context.landing_gap = 1.0;
+            ml.context.text_location.x = 20.0;
+            ml.context.text_height = 0.0;
+            ml.text_height = 2.0;
+            let pieces = explode_entity(&EntityType::MultiLeader(Box::new(ml)), &Document::new());
+            let text = pieces
+                .iter()
+                .find_map(|e| match e {
+                    EntityType::MText(t) => Some(t),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(text.height, if annotative { 8.0 } else { 60.0 });
+            assert_eq!(text.insertion_point, Vector3::new(20.0, 6.0, 0.0));
+            assert_eq!(text.rectangle_width, 20.0);
+            let arrow = pieces
+                .iter()
+                .find_map(|e| match e {
+                    EntityType::Solid(s) => Some(s),
+                    _ => None,
+                })
+                .unwrap();
+            let base = (arrow.second_corner + arrow.third_corner) * 0.5;
+            assert!(
+                (base.length() - 2.0).abs() < 1e-5,
+                "resolved arrow size must not change"
+            );
+            assert!(
+                pieces.iter().any(|e| matches!(e, EntityType::Line(l)
+                if l.start == Vector3::new(12.0, 5.0, 0.0)
+                && l.end == Vector3::new(19.0, 5.0, 0.0))),
+                "landing gap must stay resolved"
+            );
         }
     }
 
