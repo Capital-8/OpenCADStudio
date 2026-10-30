@@ -446,10 +446,15 @@ impl OpenCADStudio {
             if !xd.is_empty() && !matches!(source_entity, codec::EntityType::Ole2Frame(_)) {
                 let mut xd_props = Vec::new();
                 // A hyperlink shows on its own row; inspection data is the
-                // dimension's own.
+                // dimension's own; a centre object's association shows as its
+                // own Geometry rows (the stored object carries no such data).
                 for rec in xd.records().iter().filter(|rec| {
                     rec.application_name != crate::scene::hyperlink::APP
                         && rec.application_name != crate::entities::dim_inspect::APP
+                        && rec.application_name
+                            != codec::entities::CENTERMARK_XDATA_APPLICATION
+                        && rec.application_name
+                            != codec::entities::CENTERLINE_XDATA_APPLICATION
                 }) {
                     let value_text = rec
                         .values
