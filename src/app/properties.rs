@@ -789,6 +789,24 @@ impl OpenCADStudio {
             }
         }
 
+        // Centre marks and centre lines: the General rows end with whether
+        // the object still follows its source (read-only), as the reference
+        // lists them; a line's thickness and handle rows are not shown.
+        if let Some((_, associated)) = self.tabs[i].scene.center_object_state(handle) {
+            if let Some(general) = sections.first_mut() {
+                general
+                    .props
+                    .retain(|property| !matches!(property.field, "handle" | "thickness"));
+                general.props.push(crate::scene::model::object::Property {
+                    label: t!("Associative").into_owned(),
+                    field: "associative",
+                    value: crate::scene::model::object::PropValue::ReadOnly(
+                        if associated { t!("Yes") } else { t!("No") }.into_owned(),
+                    ),
+                });
+            }
+        }
+
         // Inject DimStyle picker + style-derived groups for Dimensions.
         if let codec::EntityType::Dimension(d) = entity {
             if let Some(general) = sections.first_mut() {
@@ -3654,12 +3672,24 @@ handles={handles_ms:.1} panel={:.1} ribbon={ribbon_ms:.1} tail={:.1} selected={}
             codec::entities::CenterMarkAssociation::read(&entity.common().extended_data).is_some();
         if center_line || center_mark {
             let settings = self.tabs[i].scene.centerline_settings();
-            if !settings.layer.eq_ignore_ascii_case("Current") {
-                entity.common_mut().layer = settings.layer;
+            // CENTERLAYER: "." is the current layer; a named layer is made
+            // when the drawing does not have it yet.
+            let layer = settings.layer.trim();
+            if !layer.is_empty() && layer != "." {
+                self.tabs[i].scene.ensure_layer(layer);
+                entity.common_mut().layer = layer.to_string();
             }
-            if !settings.linetype.eq_ignore_ascii_case("Current") {
-                entity.common_mut().linetype = settings.linetype;
-            }
+            // CENTERLTYPE: empty is CENTER2, "." the current linetype.
+            let linetype = match settings.linetype.trim() {
+                "" => "CENTER2".to_string(),
+                "." => self.tabs[i].scene.document.header.current_linetype_name.clone(),
+                other => other.to_string(),
+            };
+            crate::io::linetypes::ensure_catalog_linetype(
+                &mut self.tabs[i].scene.document,
+                &linetype,
+            );
+            entity.common_mut().linetype = linetype;
             entity.common_mut().linetype_scale = settings.linetype_scale;
             let application = if center_mark {
                 codec::entities::CENTERMARK_XDATA_APPLICATION

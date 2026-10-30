@@ -796,6 +796,7 @@ async fn load_web_bytes(
     }
     let mut doc = outcome.document;
     normalize_block_origins(&mut doc);
+    crate::scene::center_native::import(&mut doc);
     if name.to_ascii_lowercase().ends_with(".dxf") {
         fix_dxf_layout_plot_settings(&mut doc);
     }
@@ -837,6 +838,7 @@ async fn parse_web_document(name: &str, bytes: &[u8]) -> Result<Document, String
         .map_err(|error| error.message)?;
     let mut doc = outcome.document;
     normalize_block_origins(&mut doc);
+    crate::scene::center_native::import(&mut doc);
     if name.to_ascii_lowercase().ends_with(".dxf") {
         fix_dxf_layout_plot_settings(&mut doc);
     }
@@ -1002,6 +1004,7 @@ pub fn load_bytes_finalized(path: &Path, bytes: Vec<u8>) -> Result<Document, Str
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
     let mut doc = load_bytes(&name, bytes)?;
     normalize_block_origins(&mut doc);
+    crate::scene::center_native::import(&mut doc);
     resolve_raster_image_paths(&mut doc, path.parent());
     doc.source_path = Some(path.to_string_lossy().into_owned());
     // Opening is a field evaluation event (FIELDEVAL bit 1).
@@ -1267,6 +1270,7 @@ fn finalize_loaded_outcome(
 ) -> Result<codec::ReadOutcome, String> {
     let doc = &mut outcome.document;
     normalize_block_origins(doc);
+    crate::scene::center_native::import(doc);
     materialize_missing_block_markers(doc);
     if outcome.stats.source_format == Some(codec::SourceFormat::Dxf) {
         fix_dxf_layout_plot_settings(doc);

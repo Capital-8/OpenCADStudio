@@ -8,6 +8,7 @@ mod attman;
 mod block_cmdline;
 mod blocks;
 mod blockvars;
+mod center_vars;
 mod block_editor_vars;
 mod bvisibility;
 mod count;
