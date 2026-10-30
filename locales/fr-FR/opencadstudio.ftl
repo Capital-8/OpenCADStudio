@@ -4402,6 +4402,13 @@ insert =
     .field-named-textstyle = Textstyle
     .field-prop-endpoint = EndPoint
     .field-prop-startpoint = StartPoint
+    .field-prop-insertionpoint = InsertionPoint
+    .field-prop-textstring = TextString
+    .field-prop-effectivename = EffectiveName
+    .field-prop-xscalefactor = XScaleFactor
+    .field-prop-yscalefactor = YScaleFactor
+    .field-prop-zscalefactor = ZScaleFactor
+    .field-prop-linetypescale = LinetypeScale
 
 model =
     .create = Créer
