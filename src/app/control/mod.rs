@@ -2230,13 +2230,14 @@ mod tests {
         let i = app.active_tab;
         app.tabs[i].scene.document.summary_info.custom_properties =
             vec![("Client".into(), "ACME".into())];
-        // IFCX cannot carry a line's thickness: a real converter loss.
-        let mut line = codec::entities::Line::new();
-        line.thickness = 2.0;
+        // IFCX has no ray: a real converter loss.
         app.tabs[i]
             .scene
             .document
-            .add_entity(codec::entities::EntityType::Line(line))
+            .add_entity(codec::entities::EntityType::Ray(codec::entities::Ray::new(
+                codec::types::Vector3::ZERO,
+                codec::types::Vector3::UNIT_X,
+            )))
             .unwrap();
         let path = std::env::temp_dir().join(format!(
             "ocs_allow_lossy_converter_{}.ifcx",
