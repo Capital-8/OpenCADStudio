@@ -147,6 +147,23 @@ fn number(
         Err("The reference parameter value is not finite.")
     }
 }
+
+/// Rows follow the drawing's precision: lengths at LUPREC, angles at AUPREC
+/// as plain numbers (the reference prints parameter angles without a mark).
+fn display(value: f64, component: Component) -> String {
+    if component == Component::Angle {
+        let precision = crate::entities::common::unit_context()
+            .auprec
+            .max(0)
+            .min(15) as usize;
+        return crate::entities::common::without_negative_zero(format!(
+            "{:.*}",
+            precision, value
+        ));
+    }
+    crate::entities::common::format_length(value)
+}
+
 /// Values are in definition-plane drawing units, with angles in degrees.
 pub(crate) fn properties(
     doc: &Document,
@@ -191,7 +208,7 @@ pub(crate) fn properties(
                     .and_then(|frame| number(&p, frame, field.component))
                     .map(|number| PropValue::BlockNumber {
                         key,
-                        value: number.to_string(),
+                        value: display(number, field.component),
                         description: field.description.to_owned(),
                     })
             };

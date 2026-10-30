@@ -319,3 +319,30 @@ fn block_reference_properties_duplicate_flip_labels_keep_distinct_states() {
     );
     assert!(evaluate(&doc, None, field, Input::Choice(2)).is_err());
 }
+
+#[test]
+fn block_reference_property_values_print_at_the_drawing_precision() {
+    use crate::entities::common::{set_unit_context, UnitContext};
+    set_unit_context(UnitContext {
+        lunits: 2,
+        luprec: 4,
+        aunits: 0,
+        auprec: 0,
+        ..Default::default()
+    });
+    let (doc, _def, insert, _p) = fixture(2, false);
+    let rows = properties(&doc, None, 42, insert);
+    let text = |component| {
+        rows.iter()
+            .find_map(|row| match &row.value {
+                PropValue::BlockNumber { key, value, .. } if key.component == component => {
+                    Some(value.clone())
+                }
+                _ => None,
+            })
+            .unwrap()
+    };
+    // Polar distance is 10² + 10² squared; the angle is exactly 45°.
+    assert_eq!(text(Component::Distance), "14.1421");
+    assert_eq!(text(Component::Angle), "45");
+}
