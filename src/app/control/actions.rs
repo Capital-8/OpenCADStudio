@@ -47,11 +47,8 @@ fn color_value(color: codec::types::Color) -> Value {
         json!(color.index())
     }
 }
-/// One Properties-panel row as the control protocol's JSON (`id`, `label`,
-/// `kind`, `value`, `options`). The node graph moves values in this form too,
-/// so a port's value round-trips through [`OpenCADStudio::set_property_value`].
-/// Dynamic rows answer to their own parameter component rather than the
-/// shared palette field name.
+/// The id a row answers to: its parameter and component for a dynamic row,
+/// the palette's static field name otherwise.
 pub(crate) fn row_id(p: &crate::scene::model::object::Property) -> String {
     match &p.value {
         PropValue::BlockNumber { key, .. } | PropValue::BlockChoice { key, .. } => {
@@ -60,6 +57,9 @@ pub(crate) fn row_id(p: &crate::scene::model::object::Property) -> String {
         _ => p.field.to_owned(),
     }
 }
+/// One Properties-panel row as the control protocol's JSON (`id`, `label`,
+/// `kind`, `value`, `options`). The node graph moves values in this form too,
+/// so a port's value round-trips through [`OpenCADStudio::set_property_value`].
 pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value {
     let (kind, value, options) = match &p.value {
         PropValue::ReadOnly(v) | PropValue::ReadOnlyWithTooltip { value: v, .. } => {
@@ -1355,7 +1355,10 @@ impl OpenCADStudio {
                 let index = options
                     .iter()
                     .position(|option| option == &value)
-                    .or_else(|| value.trim().parse::<usize>().ok())
+                    .or_else(|| {
+                        let index = value.trim().parse::<usize>().ok()?;
+                        (index < options.len()).then_some(index)
+                    })
                     .ok_or_else(|| {
                         failure("invalid_choice", "Value is not an available option")
                     })?;
