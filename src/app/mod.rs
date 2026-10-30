@@ -1887,6 +1887,11 @@ pub(super) struct OpenCADStudio {
     dimstyle_selected: String,
     /// The arrowhead field whose User Arrow block list is open.
     dimstyle_user_arrow: Option<&'static str>,
+    /// The next EnterViewport moves to another viewport within a running
+    /// command (Ctrl+R) and must not cancel it.
+    viewport_switch_keeps_command: bool,
+    /// CHSPACE from paper space waiting for its target viewport: the objects.
+    chspace_pending: Option<Vec<codec::Handle>>,
     /// Which colour field currently has its expanded palette open (if any).
     ds_color_open: Option<DsField>,
     /// Active property group in the dimension style manager.
@@ -5972,6 +5977,8 @@ impl OpenCADStudio {
             // DimStyle dialog
             dimstyle_selected: "Standard".to_string(),
             dimstyle_user_arrow: None,
+            viewport_switch_keeps_command: false,
+            chspace_pending: None,
             ds_color_open: None,
             dimstyle_tab: 0,
             dimstyle_compare: String::new(),

@@ -11681,7 +11681,10 @@ impl OpenCADStudio {
             Message::EnterViewport(handle) => {
                 let i = self.active_tab;
                 let context_changed = self.tabs[i].scene.active_viewport != Some(handle);
-                let cancel_task = if context_changed {
+                // Ctrl+R and CHSPACE's target choice move within the command.
+                let keep_command = std::mem::take(&mut self.viewport_switch_keeps_command)
+                    || self.chspace_pending.is_some();
+                let cancel_task = if context_changed && !keep_command {
                     self.cancel_active_command_for_space_change()
                 } else {
                     Task::none()
@@ -11692,7 +11695,9 @@ impl OpenCADStudio {
                     self.tabs[i].scene.clear_preview_wire();
                 }
                 // Clear paper-space selection before entering model space.
-                self.tabs[i].scene.deselect_all();
+                if !keep_command {
+                    self.tabs[i].scene.deselect_all();
+                }
                 self.tabs[i].scene.active_viewport = Some(handle);
                 // Fold a stale UTM saved view onto the effective (auto-fit)
                 // centre so pan/zoom, paper↔model and the display all agree —
