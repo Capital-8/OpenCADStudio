@@ -6913,6 +6913,7 @@ data-panel =
     .download = Kaynaktan İndir
     .upload = Kaynağa Yükle
     .extract = Veri Çıkar
+    .link-data = Verileri Bağla
     .select-objects = Nesneleri seçin:
 pdf-shx =
     .title = PDF Metin Tanıma Ayarları

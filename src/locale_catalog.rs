@@ -6383,6 +6383,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Download from Source" => Some(("data-panel", "download")),
         "Upload to Source" => Some(("data-panel", "upload")),
         "Extract Data" => Some(("data-panel", "extract")),
+        "Link Data" => Some(("data-panel", "link-data")),
         "-LAYER  Enter an option [?/Make/Set/New/Rename/ON/OFF/Color/Ltype/LWeight/Plot/Freeze/Thaw/LOck/Unlock]:" => Some(("dash-command", "layer-option")),
         "-LAYER  Enter name list of layer(s) <%{name}>:" => Some(("dash-command", "layer-list-default")),
         "-LAYER  Enter layer name(s) to list <*>:" => Some(("dash-command", "layer-list-names")),

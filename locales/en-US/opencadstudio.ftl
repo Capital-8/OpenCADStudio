@@ -6993,6 +6993,7 @@ data-panel =
     .download = Download from Source
     .upload = Upload to Source
     .extract = Extract Data
+    .link-data = Link Data
     .select-objects = Select objects:
 pdf-shx =
     .title = PDF Text Recognition Settings
