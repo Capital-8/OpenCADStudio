@@ -561,7 +561,10 @@ scope is joined, otherwise one labeled step ("Stage parametric chain").
 (point/direction at chain position *s*; validates every segment per call —
 the seam audit belongs to staging, not to the pure read; no
 document state, no undo, no publish). Regulations: `MAX_PLUGIN_LIVE_ENTITIES`
-caps the staged set; an empty chain refuses. The lane's bench
+caps the staged set; an empty chain refuses; a declared tolerance above
+`MAX_DECLARED_TOLERANCE` (1e-2) refuses naming the ceiling — the honors
+scheme trusts the plugin's declaration, the ceiling is the host law.
+The lane's bench
 (`cargo bench --bench parametric_display_staging`) pins the budgets:
 50-segment staging far under 5 ms, sampling at sub-µs scale, and the
 Sampled-arm reads ride the stage-time cumulative-integral table (a lookup

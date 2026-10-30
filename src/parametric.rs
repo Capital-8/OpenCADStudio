@@ -55,6 +55,13 @@ use std::f64::consts::PI;
 
 const TWO_PI: f64 = std::f64::consts::TAU;
 
+/// Upper bound on a declared instance tolerance: the seam audit and the
+/// chord carriers both read the plugin's own declaration, but a
+/// declaration looser than this ceiling can only ever mask a genuinely
+/// broken chain (and coarsen chords past usefulness). Refuse at the
+/// boundary; the ceiling is a host law, not a negotiable datum.
+pub const MAX_DECLARED_TOLERANCE: f64 = 1.0e-2;
+
 /// Upper chord count per segment: once the refinement loop would exceed
 /// this, the tolerance is judged unattainable and staging refuses instead
 /// of looping.
@@ -826,6 +833,12 @@ pub fn build_display_entities(
 ) -> Result<(Vec<EntityType>, Vec<StagedCarrier>), String> {
     if !tolerance.is_finite() || tolerance <= 0.0 {
         return Err("a positive finite tolerance is required".to_owned());
+    }
+    if tolerance > MAX_DECLARED_TOLERANCE {
+        return Err(format!(
+            "the declared tolerance {tolerance} exceeds the host ceiling \
+             {MAX_DECLARED_TOLERANCE}: a declaration that loose can only mask a broken chain"
+        ));
     }
     let vitals = audit_chain(chain, tolerance)?;
     // Cap pre-check (the published ceiling): nothing is staged when the
@@ -1643,6 +1656,21 @@ mod tests {
         seg.start_direction = f64::NAN;
         let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("start direction is not finite"), "{err}");
+    }
+
+    #[test]
+    fn the_declared_tolerance_has_a_hard_ceiling() {
+        // The ceiling is a host law: exactly 1e-2 stages, anything
+        // looser refuses naming the ceiling — the honors split at the
+        // boundary. The seam audit itself stays the caller's own
+        // tolerance; the ceiling guards the DECLARATION, not the audit.
+        let chain = demo_plan_chain();
+        build_display_entities(&chain, MAX_DECLARED_TOLERANCE)
+            .expect("the ceiling itself is a legal declaration");
+        let err = build_display_entities(&chain, 1.0e-1)
+            .err()
+            .expect("a declaration past the ceiling refuses");
+        assert!(err.contains("exceeds the host ceiling"), "{err}");
     }
 
     #[test]
