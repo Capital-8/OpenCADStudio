@@ -5441,6 +5441,7 @@ impl OpenCADStudio {
                         edit.grab = grabbed.map(|point| point - world);
                     }
                     self.tabs[i].active_grip = Some(edit);
+                    self.grip_engage_press = Some(p);
                     self.grip_hover = None;
                     self.grip_popup = None;
                     self.tabs[i]
@@ -5764,9 +5765,15 @@ impl OpenCADStudio {
                 }
                 return Task::none();
             }
+            // The press that picked the grip up, released within the drag
+            // threshold, was a click however the hand trembled: stay hot
+            // and wait for the placement click.
+            let engaging_click = self.grip_engage_press.take().is_some_and(|press| {
+                let (dx, dy) = (p.x - press.x, p.y - press.y);
+                dx * dx + dy * dy <= 12.0 * 12.0
+            });
             let moved = grip.last_world != grip.origin_world;
-            if is_click && !moved {
-                // Engaging click — stay hot, wait for the placement click.
+            if engaging_click || (is_click && !moved) {
                 return Task::none();
             }
             return self.commit_active_grip_edit();
