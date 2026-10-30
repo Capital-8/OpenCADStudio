@@ -793,10 +793,12 @@ impl OpenCADStudio {
         // the object still follows its source (read-only), as the reference
         // lists them; a line's thickness and handle rows are not shown.
         if let Some((_, associated)) = self.tabs[i].scene.center_object_state(handle) {
-            if let Some(general) = sections.first_mut() {
-                general
+            for section in sections.iter_mut() {
+                section
                     .props
                     .retain(|property| !matches!(property.field, "handle" | "thickness"));
+            }
+            if let Some(general) = sections.first_mut() {
                 general.props.push(crate::scene::model::object::Property {
                     label: t!("Associative").into_owned(),
                     field: "associative",
