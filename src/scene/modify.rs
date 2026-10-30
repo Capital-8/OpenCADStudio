@@ -181,37 +181,24 @@ impl Scene {
         )
     }
 
-    /// Invalidate a dimension's baked block while capturing every removed
-    /// sub-entity for an active history transaction.
+    /// Invalidate a dimension's baked block inside an edit.
+    ///
+    /// Only the reference goes: the old picture stays a block of its own,
+    /// which an undo (recorded here, or a grip edit's own snapshot) points
+    /// back to, and the next save drops it once nothing names it.
     pub fn invalidate_dim_block_recorded(&mut self, handle: Handle) {
-        if self.is_recording_undo() {
-            let owned: Vec<Handle> = self
-                .document
-                .get_entity(handle)
-                .and_then(|entity| match entity {
-                    EntityType::Dimension(d) => {
-                        let name = d.base().block_name.clone();
-                        self.document.block_records.get(&name).map(|record| {
-                            let mut handles = record.entity_handles.clone();
-                            handles.push(record.block_entity_handle);
-                            handles.push(record.block_end_handle);
-                            handles
-                        })
-                    }
-                    _ => None,
-                })
-                .unwrap_or_default();
-            if let Some(before) = self.document.get_entity_arc(handle) {
-                self.record_undo_before(handle, Some(before));
-            }
-            for owned_handle in owned {
-                if let Some(before) = self.document.get_entity_arc(owned_handle) {
-                    self.record_undo_before(owned_handle, Some(before));
-                }
-            }
-            self.poison_undo_recording();
+        let Some(before) = self.document.get_entity_arc(handle) else {
+            return;
+        };
+        if !matches!(&*before, EntityType::Dimension(d) if !d.base().block_name.is_empty()) {
+            return;
         }
-        crate::modules::draw::modify::explode::invalidate_dim_block(&mut self.document, handle);
+        if self.is_recording_undo() {
+            self.record_undo_before(handle, Some(before));
+        }
+        if let Some(EntityType::Dimension(d)) = self.document.get_entity_mut(handle) {
+            d.base_mut().block_name.clear();
+        }
     }
 
     // ── Modify (transform / copy) ─────────────────────────────────────────
