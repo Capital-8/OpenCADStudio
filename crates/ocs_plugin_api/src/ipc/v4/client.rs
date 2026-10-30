@@ -686,7 +686,11 @@ impl HostApi for V4PluginHostApi {
     fn document_view_v4(&mut self, tab_id: u64) -> Option<DocumentViewInfo> {
         {
             let mut view = self.doc_view_v4.borrow_mut();
-            if view.as_ref().map(|(cached_id, _)| *cached_id) != Some(tab_id) {
+            // A drawing that outgrew its mapping moved to a new file.
+            let current = view.as_ref().is_some_and(|(cached_id, info)| {
+                *cached_id == tab_id && Path::new(&info.path).exists()
+            });
+            if !current {
                 match self.request(PluginRequest::OpenDocumentViewV4 { tab_id }) {
                     Ok(PluginResponse::DocumentViewV4 { path, version }) => {
                         *view = Some((tab_id, DocumentViewInfo { path, version }));
