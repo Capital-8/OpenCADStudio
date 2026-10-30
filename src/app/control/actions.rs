@@ -173,6 +173,8 @@ pub(super) const NAMES: &[&str] = &[
     "ribbon_dropdown",
     "keytips",
     "dialog_ok",
+    "dialog_discard",
+    "dialog_cancel",
     "block_def_dialog",
     "attdef_dialog",
     "field_dialog",
@@ -3067,6 +3069,7 @@ impl OpenCADStudio {
             }
             // The open dialog's OK button.
             "dialog_ok" => match self.active_modal {
+                Some(crate::app::ModalKind::Unsaved) => Message::UnsavedDialogSave,
                 Some(crate::app::ModalKind::XrefAttach) => {
                     Message::XrefAttach(crate::ui::window::xref_attach::XrefAttachMsg::Apply)
                 }
@@ -3087,6 +3090,16 @@ impl OpenCADStudio {
                     Message::AttMan(crate::ui::window::attman_dialog::AttManMsg::Ok)
                 }
                 _ => return Err(failure("no_dialog", "No dialog with an OK button is open")),
+            },
+            "dialog_discard" | "dialog_cancel" => match self.active_modal {
+                Some(crate::app::ModalKind::Unsaved) => {
+                    if name == "dialog_discard" {
+                        Message::UnsavedDialogDiscard
+                    } else {
+                        Message::UnsavedDialogCancel
+                    }
+                }
+                _ => return Err(failure("no_dialog", "No dialog with that button is open")),
             },
             "close_document" => Message::TabClose(self.tabs[self.active_tab].id),
             "toggle_properties" => Message::ToggleProperties,

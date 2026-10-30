@@ -39,7 +39,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// `input` gained `handles`, so a selection prompt can be handed a set
 /// without a round trip through `select`.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "435331060bf53eb03c2362822f4725a49152fe70a6b9478a3eee04be8256307c";
+const TOOL_SCHEMA_DIGEST: &str = "3a58372ac5208b1f9c3821682fedc57d3e55ca4ea4f77eb60bc5433c68647096";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;

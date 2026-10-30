@@ -3240,6 +3240,56 @@ mod tests {
     }
 
     #[test]
+    fn close_confirmation_prompt_is_automatable() {
+        use crate::app::ModalKind;
+        let mut app = OpenCADStudio::new_for_test();
+        assert_eq!(request(&mut app, json!({"op":"new"}))["status"], "completed");
+        assert_eq!(
+            request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}))["status"],
+            "completed"
+        );
+        let names = crate::app::automation_action_names();
+        for name in ["dialog_ok", "dialog_discard", "dialog_cancel"] {
+            assert!(names.contains(&name), "{name} should be listed");
+        }
+        // Cancel dismisses the prompt and leaves the drawing open.
+        let closed = request(&mut app, json!({"op":"action","name":"close_document"}));
+        assert_eq!(closed["status"], "waiting_input", "{closed}");
+        assert_eq!(app.active_modal, Some(ModalKind::Unsaved));
+        let cancelled = request(&mut app, json!({"op":"action","name":"dialog_cancel"}));
+        assert_eq!(cancelled["ok"], true, "{cancelled}");
+        assert_ne!(app.active_modal, Some(ModalKind::Unsaved));
+        assert_eq!(request(&mut app, json!({"op":"entities"}))["total"], 1);
+        // Discard closes the drawing without saving it.
+        let closed = request(&mut app, json!({"op":"action","name":"close_document"}));
+        assert_eq!(closed["status"], "waiting_input", "{closed}");
+        assert_eq!(app.active_modal, Some(ModalKind::Unsaved));
+        let discarded = request(&mut app, json!({"op":"action","name":"dialog_discard"}));
+        assert_eq!(discarded["ok"], true, "{discarded}");
+        assert_ne!(app.active_modal, Some(ModalKind::Unsaved));
+        assert_eq!(app.tabs.len(), 1);
+        assert_eq!(request(&mut app, json!({"op":"entities"}))["total"], 0);
+        // Save closes the drawing through the save flow rather than refusing.
+        let mut app = OpenCADStudio::new_for_test();
+        assert_eq!(request(&mut app, json!({"op":"new"}))["status"], "completed");
+        let path = std::env::temp_dir().join(format!("ocs-close-{}.dwg", session_id()));
+        assert_eq!(
+            request(&mut app, json!({"op":"save","path":path}))["ok"],
+            true
+        );
+        let drawn = request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        assert_eq!(drawn["ok"], true, "{drawn}");
+        let closed = request(&mut app, json!({"op":"action","name":"close_document"}));
+        assert_eq!(closed["status"], "waiting_input", "{closed}");
+        assert_eq!(app.active_modal, Some(ModalKind::Unsaved));
+        let saved = request(&mut app, json!({"op":"action","name":"dialog_ok"}));
+        assert_ne!(saved["code"], "no_dialog", "{saved}");
+        assert_ne!(app.active_modal, Some(ModalKind::Unsaved));
+        assert!(path.is_file(), "the closed drawing was written to disk");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn pending_request_id_reuse_rejects_changed_payload() {
         let mut app = OpenCADStudio::new_for_test();
         app.main_window = Some(iced::window::Id::unique());
