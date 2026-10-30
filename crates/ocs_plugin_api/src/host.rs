@@ -2001,7 +2001,9 @@ pub struct ParametricSample {
 ///
 /// The host knows NO species: a curve is a driving-quantity ramp declared as
 /// DATA over the unit station parameter, evaluated by the host's generic
-/// integrator, audited at the record-model tolerances, and staged with
+/// integrator, audited at the declaring instance's own tolerance (the
+/// seams' continuity bound — one declared accuracy for welds and chords),
+/// and staged with
 /// generic carriers (exact Hermite for the polynomial class, measured-
 /// deviation chords otherwise). Species semantics (which quantity drives,
 /// which ramps restate which law, what a segment's ends must be) are the

@@ -2062,8 +2062,9 @@ fn descriptor_begin_engages_and_moves_restage_in_place() {
     );
 
     // THE DRAG: the crest's end moves to (300, 11); the section re-derives
-    // per its own record-model laws (g2 = 0.09, R = 2500) and the tail
-    // re-bases to the sampled joint. NO Move frame crosses the IPC.
+    // per its own record-model laws (the ramp's end value takes 0.09) and
+    // the tail re-bases to the sampled joint. NO Move frame crosses the
+    // IPC.
     let _ = app.move_plugin_grip_drag(i, glam::DVec3::new(300.0, 11.0, 0.0));
     assert_eq!(events.borrow().len(), 1, "no Move frame in the mode");
     assert_eq!(
