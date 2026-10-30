@@ -422,6 +422,9 @@ impl OpenCADStudio {
                     selected += 1;
                 }
             }
+            // The selection this replaces was what the panel and the grip
+            // overlay were built from; same rebuild the `select` op runs.
+            self.refresh_properties();
         }
         self.set_control_result(json!({
             "name": name,

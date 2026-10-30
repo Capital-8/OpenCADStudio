@@ -137,6 +137,11 @@ pub(super) struct State {
     /// it hold the control slot forever.
     #[cfg(target_arch = "wasm32")]
     pub(super) capture_deadline: Option<iced::time::Instant>,
+    /// The final entity changes of a history step that restored a
+    /// document-level snapshot. Such a step bumps geometry as a whole, so the
+    /// journal cannot name what moved; the step's own delta can, and the
+    /// response of the request that ran it reports these instead of `null`.
+    history_changes: Option<Vec<(codec::Handle, crate::scene::ChangeKind)>>,
 }
 
 /// The pending half of an interactive `user_select` operation (`interactive`
@@ -168,6 +173,31 @@ impl State {
             enabled: true,
             ..Self::default()
         }
+    }
+
+    /// Offer a history step's entity changes to the response of the request
+    /// that is running it. The `routing` flag is set only while a request is
+    /// executing synchronously, so an undo someone triggers at the screen
+    /// (or while an interactive request is parked) records nothing.
+    pub(super) fn note_history_changes(
+        &mut self,
+        changes: Vec<(codec::Handle, crate::scene::ChangeKind)>,
+    ) {
+        if self.routing {
+            self.history_changes = Some(changes);
+        }
+    }
+
+    pub(super) fn take_history_changes(
+        &mut self,
+    ) -> Option<Vec<(codec::Handle, crate::scene::ChangeKind)>> {
+        self.history_changes.take()
+    }
+
+    /// Drop a step's account when no response consumed it, so a later
+    /// request cannot inherit changes it did not make.
+    pub(super) fn clear_history_changes(&mut self) {
+        self.history_changes = None;
     }
 }
 struct Operation {
@@ -1042,6 +1072,7 @@ impl OpenCADStudio {
         } else {
             Some(tab.id)
         };
+        self.control.clear_history_changes();
         self.control.pending = Some(Operation {
             id: id.clone(),
             request: req.clone(),
@@ -1687,8 +1718,26 @@ impl OpenCADStudio {
         } else {
             "completed"
         };
-        let changes = self.tabs[self.active_tab].scene.replay_since(p.geometry_revision)
-            .map(|values| values.into_iter().take(1000).map(|(handle,kind)|json!({"handle":format!("{:X}",handle.value()),"kind":format!("{kind:?}")})).collect::<Vec<_>>());
+        // A step that restored a whole document snapshot bumps geometry as a
+        // whole, and the journal answers `None` for anything spanning it. The
+        // step's own delta named what it added and removed, so report that
+        // rather than claiming nothing can be said.
+        let changes = match self.tabs[self.active_tab]
+            .scene
+            .replay_since(p.geometry_revision)
+        {
+            Some(values) => Some(values),
+            None => self.control.take_history_changes(),
+        }
+        .map(|values| {
+            values
+                .into_iter()
+                .take(1000)
+                .map(|(handle, kind)| {
+                    json!({"handle":format!("{:X}",handle.value()),"kind":format!("{kind:?}")})
+                })
+                .collect::<Vec<_>>()
+        });
         let response = json!({"ok":!failed,"status":status,"request_id":p.id,"error":if failed{self.command_line.last_error.clone()}else{None},"result":p.result,"changes":changes,"state":self.control_state()});
         self.control.serial += 1;
         self.control.events.push_back(json!({"sequence":self.control.serial,"request_id":p.id,"status":status,"document_id":self.tabs[self.active_tab].id,"revision":self.tabs[self.active_tab].edit_revision}));
@@ -4294,5 +4343,237 @@ mod tests {
             }),
         );
         assert_eq!(moved["ok"], true, "{moved}");
+    }
+
+    fn panel_row_text(app: &OpenCADStudio, label: &str) -> String {
+        app.tabs[app.active_tab]
+            .properties
+            .sections
+            .iter()
+            .flat_map(|section| &section.props)
+            .find(|property| property.label == label)
+            .map(|property| match &property.value {
+                crate::scene::model::object::PropValue::EditText(value) => value.clone(),
+                other => format!("{other:?}"),
+            })
+            .unwrap_or_else(|| panic!("no {label} row on the panel"))
+    }
+
+    /// A transform keeps the selection, so the grip overlay and the Properties
+    /// rows must be rebuilt from the moved entity instead of going on
+    /// describing the place it occupied when the selection was made. Both are
+    /// fed by one snapshot, so a transform that forgets the rebuild leaves the
+    /// viewport drawing handles (and the palette reporting a position) for
+    /// geometry that is no longer there.
+    #[test]
+    fn a_transform_rebuilds_the_selected_grips_and_panel() {
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        let lines = app.control_request(json!({"op":"query","type":"Line"})).0;
+        let line = lines["entities"][0]["handle"].as_str().unwrap().to_string();
+        let defined = request(
+            &mut app,
+            json!({
+                "op":"block_define",
+                "name":"PARITY",
+                "handles":[line],
+                "base":[0,0,0],
+                "insert_at":[0,0,0]
+            }),
+        );
+        assert_eq!(defined["ok"], true, "{defined}");
+        let insert = defined["result"]["insert"].as_str().unwrap().to_string();
+        let selected = request(&mut app, json!({"op":"select","handles":[insert]}));
+        assert_eq!(selected["ok"], true, "{selected}");
+
+        let before = request(&mut app, json!({"op":"grips"}));
+        assert_eq!(
+            before["grips"][0]["point"][0].as_f64(),
+            Some(0.0),
+            "{before}"
+        );
+
+        let moved = request(
+            &mut app,
+            json!({
+                "op":"entities_transform",
+                "handles":[insert],
+                "action":"move",
+                "vector":[25,0,0]
+            }),
+        );
+        assert_eq!(moved["ok"], true, "{moved}");
+
+        let after = request(&mut app, json!({"op":"grips"}));
+        assert_eq!(
+            after["grips"][0]["point"][0].as_f64(),
+            Some(25.0),
+            "the grip must follow the moved insert: {after}"
+        );
+
+        // Compared against its own rebuild: a panel left behind by the
+        // transform no longer matches what the document says right now.
+        let stale = panel_row_text(&app, "Position X");
+        app.refresh_properties();
+        let fresh = panel_row_text(&app, "Position X");
+        assert_eq!(stale, fresh, "Position X must describe the moved insert");
+    }
+
+    /// Undo answers with what the step changed. An array is one step that
+    /// removes every copy it made, and the response has to name them so a
+    /// script can see what the step did without re-reading the drawing.
+    #[test]
+    fn undo_of_an_array_names_the_copies_it_removed() {
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        let lines = app.control_request(json!({"op":"query","type":"Line"})).0;
+        let line = lines["entities"][0]["handle"].as_str().unwrap().to_string();
+        let defined = request(
+            &mut app,
+            json!({
+                "op":"block_define",
+                "name":"PARITY",
+                "handles":[line],
+                "base":[0,0,0],
+                "insert_at":[0,0,0]
+            }),
+        );
+        assert_eq!(defined["ok"], true, "{defined}");
+        let insert = defined["result"]["insert"].as_str().unwrap().to_string();
+        let arrayed = request(
+            &mut app,
+            json!({
+                "op":"entities_transform",
+                "handles":[insert],
+                "action":"array",
+                "rows":1,
+                "columns":3,
+                "column_spacing":20
+            }),
+        );
+        assert_eq!(arrayed["ok"], true, "{arrayed}");
+        let created = arrayed["result"]["created"].as_array().unwrap();
+        assert_eq!(created.len(), 2, "{arrayed}");
+
+        let undo = request(&mut app, json!({"op":"undo"}));
+        let changes = undo["changes"]
+            .as_array()
+            .unwrap_or_else(|| panic!("undo must name what it changed: {undo}"));
+        for handle in created {
+            assert!(
+                changes.iter().any(|change| change["handle"] == *handle),
+                "the undo must report copy {handle}: {undo}"
+            );
+        }
+    }
+
+    /// An undo that restores a document-level snapshot — turning entities
+    /// into a block definition touches the block table — changes entity
+    /// geometry through a path the journal cannot diff. The step still knows
+    /// exactly which entities it added and removed, and the response must
+    /// carry them instead of answering `changes: null`.
+    #[test]
+    fn undo_of_a_definition_step_names_the_handles_it_restored() {
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        let lines = app.control_request(json!({"op":"query","type":"Line"})).0;
+        let line = lines["entities"][0]["handle"].as_str().unwrap().to_string();
+        let defined = request(
+            &mut app,
+            json!({
+                "op":"block_define",
+                "name":"PARITY",
+                "handles":[line],
+                "base":[0,0,0],
+                "insert_at":[0,0,0]
+            }),
+        );
+        assert_eq!(defined["ok"], true, "{defined}");
+        let insert = defined["result"]["insert"].as_str().unwrap().to_string();
+
+        let undo = request(&mut app, json!({"op":"undo"}));
+        let changes = undo["changes"]
+            .as_array()
+            .unwrap_or_else(|| panic!("undo must name what it changed: {undo}"));
+        assert!(
+            changes.iter().any(|change| change["handle"] == *insert),
+            "the undo must report the erased insert {insert}: {undo}"
+        );
+        assert!(
+            changes.iter().any(|change| change["handle"] == *line),
+            "the undo must report the restored line {line}: {undo}"
+        );
+    }
+
+    /// Only a request that is executing records a history step's account.
+    /// An interactive request parks its slot open while the person at the
+    /// screen works, and an undo they take then is not that request's doing.
+    #[test]
+    fn a_history_step_records_nothing_when_no_request_is_routing() {
+        let mut app = OpenCADStudio::new_for_test();
+        let changes = || vec![(codec::Handle::new(1), crate::scene::ChangeKind::Modified)];
+        app.control.note_history_changes(changes());
+        assert!(
+            app.control.take_history_changes().is_none(),
+            "an undo at the screen has no response to answer"
+        );
+        app.control.routing = true;
+        app.control.note_history_changes(changes());
+        assert_eq!(
+            app.control.take_history_changes().map(|changes| changes.len()),
+            Some(1)
+        );
+    }
+
+    /// Recalling a saved set replaces the selection, so the grip overlay has
+    /// to describe the set that is selected now — it is the same snapshot the
+    /// viewport paints and a drag aims from.
+    #[test]
+    fn loading_a_selection_set_rebuilds_the_grips() {
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        let first = app.control_request(json!({"op":"query","type":"Line"})).0
+            ["entities"][0]["handle"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        request(&mut app, json!({"op":"run","cmd":"LINE 20,0 30,0"}));
+        let lines = app.control_request(json!({"op":"query","type":"Line"})).0;
+        let second = lines["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entity| entity["handle"].as_str())
+            .find(|handle| **handle != first)
+            .unwrap()
+            .to_string();
+
+        let selected = request(&mut app, json!({"op":"select","handles":[first]}));
+        assert_eq!(selected["ok"], true, "{selected}");
+        let before = request(&mut app, json!({"op":"grips"}));
+        assert_eq!(
+            before["grips"][0]["point"][0].as_f64(),
+            Some(0.0),
+            "{before}"
+        );
+
+        let saved = request(
+            &mut app,
+            json!({"op":"selection_set_save","name":"SECOND","handles":[second]}),
+        );
+        assert_eq!(saved["ok"], true, "{saved}");
+        let loaded = request(&mut app, json!({"op":"selection_set_load","name":"SECOND"}));
+        assert_eq!(loaded["ok"], true, "{loaded}");
+
+        let after = request(&mut app, json!({"op":"grips"}));
+        assert_eq!(
+            after["grips"][0]["point"][0].as_f64(),
+            Some(20.0),
+            "the grips must belong to the set that is selected now: {after}"
+        );
     }
 }

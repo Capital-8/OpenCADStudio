@@ -745,6 +745,14 @@ impl OpenCADStudio {
         self.tabs[i].scene.populate_meshes_from_document();
         self.refresh_layer_panel();
         self.tabs[i].dirty = true;
+        if i == self.active_tab {
+            // The selection often survives these edits — a transform, an
+            // attribute change, an erase of other handles — so both surfaces
+            // built from it describe geometry the document no longer has
+            // unless they are rebuilt here. The panel rebuild carries the
+            // grip refresh.
+            self.refresh_properties();
+        }
     }
 
     /// Execute a toolbar [`XrefPaletteOp`] on the palette's actionable
