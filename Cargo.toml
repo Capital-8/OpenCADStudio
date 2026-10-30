@@ -338,3 +338,6 @@ path = "tests/integration.rs"
 [patch."https://github.com/HakanSeven12/opencadkernel.git"]
 opencadkernel = { git = "https://github.com/ramox81/cadkernel.git", rev = "18dbdb0" }
 opencadkernel-constraints = { git = "https://github.com/ramox81/cadkernel.git", rev = "18dbdb0" }
+
+[patch."https://github.com/HakanSeven12/acadrust.git"]
+acadrust = { git = "https://github.com/ramox81/cadcodec.git", rev = "1b173a8" }
