@@ -1438,6 +1438,17 @@ impl OpenCADStudio {
         if self.layout_rename_state.take().is_some() {
             return Task::none();
         }
+        // A palette cell holding typed text reverts first: the value goes
+        // back to the model's and the row keeps its focus and its
+        // reference selected. A second Esc then escalates as usual.
+        if self.tabs[i_e].active_cmd.is_none() {
+            let panel = &mut self.tabs[i_e].properties;
+            if let Some(key) = panel.active_field.clone() {
+                if panel.edit_buf.remove(&key).is_some() {
+                    return Task::none();
+                }
+            }
+        }
         // Typed text on the command line cancels first — one
         // Esc empties the buffer, a second Esc then escalates
         // to whatever the current mode would otherwise do

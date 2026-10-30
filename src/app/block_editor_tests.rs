@@ -6912,6 +6912,76 @@ fn block_reference_numeric_properties_history_scratch_expression_and_stale_guard
 }
 
 #[test]
+fn escape_reverts_a_pending_block_parameter_edit_and_keeps_the_selection() {
+    use crate::scene::model::object::{BlockParameterComponent as Component, PropValue};
+    use crate::scene::{block_actions as actions, block_distance_parameter as distance};
+    use crate::ui::properties::FieldKey;
+    let (mut app, reference) = fixture();
+    begin(&mut app, reference);
+    let source = app.active_tab;
+    let def = app.tabs[source]
+        .active_block_edit_session()
+        .unwrap()
+        .br_handle;
+    let parameter = distance::create(
+        &mut app.tabs[source].scene.document,
+        def,
+        distance::Kind::Linear,
+        Vector3::ZERO,
+        Vector3::new(10., 0., 0.),
+        Vector3::UNIT_Y,
+    )
+    .unwrap();
+    let target = members(&app)[0];
+    actions::create(
+        &mut app.tabs[source].scene.document,
+        def,
+        actions::Kind::Move,
+        parameter,
+        &[target],
+        glam::DVec3::ZERO,
+    )
+    .unwrap();
+    let _ = app.dispatch_command("BSAVE");
+    let _ = app.dispatch_command("BCLOSE");
+    let i = app.active_tab;
+    app.tabs[i].scene.select_entity(reference, true);
+    app.tabs[i].selected_handle = Some(reference);
+    app.refresh_properties();
+    let field = app.tabs[i]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .find_map(|property| match property.value {
+            PropValue::BlockNumber { key, .. } if key.component == Component::Distance => Some(key),
+            _ => None,
+        })
+        .unwrap();
+    let key = FieldKey::BlockParameter(field);
+    app.tabs[i].properties.active_field = Some(key.clone());
+    let _ = app.update(Message::PropBlockInput {
+        key: field,
+        value: "40".into(),
+    });
+    assert_eq!(app.tabs[i].properties.edit_buf.get(&key), Some(&"40".to_string()));
+    let before = app.tabs[i].scene.document.clone();
+    let _ = app.update(Message::CommandEscape);
+    assert_eq!(
+        app.tabs[i].properties.edit_buf.get(&key),
+        None,
+        "the typed text is discarded"
+    );
+    assert_eq!(app.tabs[i].scene.document, before, "nothing is committed");
+    assert_eq!(
+        app.tabs[i].selected_handle,
+        Some(reference),
+        "the row keeps its reference selected"
+    );
+    assert_eq!(app.tabs[i].properties.active_field, Some(key));
+}
+
+#[test]
 fn block_reference_properties_keys_do_not_retarget_other_selections() {
     use crate::scene::model::object::PropValue;
     use crate::scene::{block_actions as actions, block_distance_parameter as distance};
