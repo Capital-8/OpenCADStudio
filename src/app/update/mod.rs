@@ -5801,6 +5801,12 @@ impl OpenCADStudio {
                 }
                 Task::none()
             }
+            Message::FlipPick(idx) => {
+                if let Some(popup) = self.flip_popup.take() {
+                    self.apply_flip_state(popup, idx == 1);
+                }
+                Task::none()
+            }
 
             Message::GripMenuPick(idx) => self.on_grip_menu_pick(idx),
 

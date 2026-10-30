@@ -1193,9 +1193,15 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
         click(&mut app, flip_at);
         assert!(
             app.tabs[i].active_cmd.is_none(),
-            "Flip toggles immediately without point input"
+            "the flip chevron never asks for point input"
         );
-        check(&app, insert, -Vector3::UNIT_Y);
+        if test {
+            check(&app, insert, -Vector3::UNIT_Y);
+        } else {
+            let flipped = 1 - app.flip_popup.as_ref().expect("flip state list").current;
+            let _ = app.update(Message::FlipPick(flipped));
+            check(&app, insert, -Vector3::UNIT_Y);
+        }
         app.tabs[i].scene.selected.insert(insert);
         app.refresh_properties();
         let flip_grip = app.tabs[i]
@@ -1222,6 +1228,8 @@ fn block_actions_rotate_flip_mouse_grips_authoring_history_and_reopen() {
             app.tabs[i].scene.selected.insert(insert);
             app.refresh_properties();
             click(&mut app, flip_at);
+            let flipped = 1 - app.flip_popup.as_ref().expect("flip state list").current;
+            let _ = app.update(Message::FlipPick(flipped));
             check(&app, insert, Vector3::UNIT_Y);
             let EntityType::Line(original) =
                 app.tabs[i].scene.document.get_entity(targets[0]).unwrap()
