@@ -320,6 +320,10 @@ name = "dependency_index_rebuild"
 harness = false
 
 [[bench]]
+name = "parametric_display_staging"
+harness = false
+
+[[bench]]
 name = "mesh_export"
 harness = false
 
