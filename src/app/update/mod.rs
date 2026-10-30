@@ -750,6 +750,23 @@ impl OpenCADStudio {
                 return task;
             }
         }
+        // An open dynamic-value list owns Escape, Enter and the arrows: without
+        // this they reach the command line or the viewport and dismiss the
+        // selection the list was opened for. A list whose panel is hidden is
+        // not on screen, so it must not keep the guard on.
+        let picker = self.tabs[self.active_tab].properties.open_block_picker;
+        let picker_shown = picker.is_some_and(|(_, quick)| {
+            if quick {
+                self.quick_properties
+            } else {
+                self.dock_panel_visible(crate::ui::dock::PanelId::Properties)
+            }
+        });
+        if picker_shown || self.block_picker_dismissed {
+            if let Some(task) = self.intercept_block_picker_key(&msg) {
+                return task;
+            }
+        }
         // A command's name is `&'static str`, so this runs on every message —
         // a mouse move included — without allocating.
         #[cfg(not(target_arch = "wasm32"))]
@@ -3257,6 +3274,10 @@ impl OpenCADStudio {
                 }
                 self.layout_list_open = false;
                 self.layout_rename_state = None;
+                for tab in &mut self.tabs {
+                    tab.properties.open_block_picker = None;
+                }
+                self.block_picker_dismissed = false;
                 if idx < self.tabs.len() {
                     if idx != self.active_tab {
                         // The attribute editor is tab-scoped; leaving its tab
@@ -5952,6 +5973,9 @@ impl OpenCADStudio {
                     return Task::none();
                 }
                 let open = !self.dock_panel_visible(id);
+                // Hiding the panel takes its lists with it; a flag left behind
+                // would keep the keyboard guard swallowing keys.
+                self.tabs[self.active_tab].properties.open_block_picker = None;
                 if self.clean_screen {
                     // Shown over clean screen without changing the panel's
                     // normal state.
@@ -6456,6 +6480,10 @@ impl OpenCADStudio {
             Message::ToggleCleanScreen => {
                 self.clean_screen ^= true;
                 self.clean_screen_properties = false;
+                if self.clean_screen {
+                    // The panel goes with the chrome; its list cannot stay open.
+                    self.tabs[self.active_tab].properties.open_block_picker = None;
+                }
                 Task::none()
             }
             Message::ToggleTransparencyDisplay => {
@@ -6468,6 +6496,9 @@ impl OpenCADStudio {
             }
             Message::ToggleQuickProperties => {
                 self.quick_properties ^= true;
+                // The Quick Properties copy of the row, and its list, go with
+                // the panel.
+                self.tabs[self.active_tab].properties.open_block_picker = None;
                 if self.quick_properties {
                     self.quick_properties_anchor = self.tabs[self.active_tab].last_cursor_screen;
                 }
@@ -8897,13 +8928,49 @@ impl OpenCADStudio {
                 Task::none()
             }
             Message::PropBlockCommit(key) => self.commit_block_parameter_property(key, None),
-            Message::PropBlockChoice { key, index } => self.commit_block_parameter_property(key, Some(index)),
+            Message::PropBlockChoice { key, index } => {
+                for tab in &mut self.tabs {
+                    if tab
+                        .properties
+                        .open_block_picker
+                        .is_some_and(|(open, _)| open == key)
+                    {
+                        tab.properties.open_block_picker = None;
+                    }
+                }
+                self.commit_block_parameter_property(key, Some(index))
+            }
+            Message::PropBlockPickerToggle { key, quick } => {
+                let panel = &mut self.tabs[self.active_tab].properties;
+                panel.open_block_picker = if panel.open_block_picker == Some((key, quick)) {
+                    None
+                } else {
+                    Some((key, quick))
+                };
+                self.block_picker_dismissed = false;
+                Task::none()
+            }
+            Message::PropBlockPickerDismiss { key, quick } => {
+                for tab in &mut self.tabs {
+                    if tab
+                        .properties
+                        .open_block_picker
+                        .is_some_and(|open| open == (key, quick))
+                    {
+                        tab.properties.open_block_picker = None;
+                    }
+                }
+                self.block_picker_dismissed = true;
+                Task::none()
+            }
 
 
             Message::PropGroupToggle(key) => {
-                let groups = &mut self.tabs[self.active_tab].properties.expanded_groups;
-                if !groups.remove(&key) {
-                    groups.insert(key);
+                let panel = &mut self.tabs[self.active_tab].properties;
+                // A collapsed group can take the open list's row off screen.
+                panel.open_block_picker = None;
+                if !panel.expanded_groups.remove(&key) {
+                    panel.expanded_groups.insert(key);
                 }
                 Task::none()
             }
@@ -8918,6 +8985,7 @@ impl OpenCADStudio {
                 let sections = self.collapsed_property_sections.clone();
                 for tab in &mut self.tabs {
                     tab.properties.collapsed_sections = sections.clone();
+                    tab.properties.open_block_picker = None;
                 }
                 Task::none()
             }

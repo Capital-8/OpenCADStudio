@@ -33,12 +33,6 @@ const LINETYPE_MENU_W: f32 = 220.0;
 use crate::app::Message;
 use crate::scene::model::object::{PropSection, PropValue};
 
-#[derive(Clone, Debug, PartialEq)]
-struct IndexedBlockChoice { index: usize, label: String }
-impl fmt::Display for IndexedBlockChoice {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { formatter.write_str(&self.label) }
-}
-
 const VARIES_LABEL: &str = "*VARIES*";
 
 // ── Linetype item (name + ASCII art for combo_box) ───────────────────────
@@ -653,6 +647,10 @@ pub struct PropertiesPanel {
     pub collapsed_sections: HashSet<String>,
     /// Whether the editable-dropdown (block Name) option list is open.
     pub edit_choice_open: bool,
+    /// The open dynamic-value list (block table / flip / lookup), as its row
+    /// and whether it belongs to the Quick Properties surface — the same row
+    /// is instantiated on both surfaces, so the pair tells them apart.
+    pub open_block_picker: Option<(crate::scene::model::object::BlockParameterKey, bool)>,
     /// The open dropdown belongs to Quick Properties, not the docked panel:
     /// both render these rows, and two open copies swallow each other's
     /// clicks (#1766).
@@ -698,6 +696,7 @@ impl Default for PropertiesPanel {
             expanded_groups: HashSet::default(),
             collapsed_sections: HashSet::default(),
             edit_choice_open: false,
+            open_block_picker: None,
             picker_in_quick: false,
             rendering_quick: std::cell::Cell::new(false),
             active_field: None,
@@ -1004,29 +1003,62 @@ impl PropertiesPanel {
                 options,
                 description,
             } => {
-                let choices: Vec<_> = options
-                    .iter()
-                    .enumerate()
-                    .map(|(index, label)| IndexedBlockChoice {
-                        index,
-                        label: label.clone(),
-                    })
-                    .collect();
-                let current = choices.get(*selected).cloned();
                 let key = *key;
-                let picker =
-                    iced::widget::pick_list(current, choices, |choice: &IndexedBlockChoice| {
-                        choice.label.clone()
+                let quick = self.rendering_quick.get();
+                let open = self.open_block_picker == Some((key, quick));
+                let shown = options
+                    .get(*selected)
+                    .cloned()
+                    .unwrap_or_else(|| t!("Custom").into_owned());
+                let caret = button(
+                    container(if open {
+                        crate::ui::icons::themed_arrow_up(9.0)
+                    } else {
+                        crate::ui::icons::themed_arrow_down(9.0)
                     })
-                    .on_select(move |choice| Message::PropBlockChoice {
-                        key,
-                        index: choice.index,
-                    })
-                    .placeholder(t!("Custom"))
-                    .text_size(FONT_SZ)
-                    .padding([3, 6])
-                    .width(Length::Fill);
-                let row = prop_row_widget(label, picker.into());
+                    .align_y(iced::Center),
+                )
+                .on_press(Message::PropBlockPickerToggle { key, quick })
+                .style(button::subtle)
+                .padding([2, 6]);
+                let head = container(
+                    row![text(shown).size(FONT_SZ).width(Length::Fill), caret]
+                        .align_y(iced::Center),
+                )
+                .style(container::bordered_box)
+                .padding([2, 6])
+                .width(Length::Fill);
+                // A choice cell opens on a click anywhere in it, not only on
+                // the caret.
+                let head = mouse_area(head).on_press(Message::PropBlockPickerToggle { key, quick });
+                // The list is part of the panel's own state, so opening and
+                // closing it needs no widget-tree handle and the keys it
+                // consumes always match the list on screen.
+                let mut list = column![].spacing(1);
+                for (index, option) in options.iter().enumerate() {
+                    list = list.push(
+                        button(text(option.as_str()).size(FONT_SZ))
+                            .on_press(Message::PropBlockChoice { key, index })
+                            .style(button::subtle)
+                            .padding([2, 6])
+                            .width(Length::Fill),
+                    );
+                }
+                let popup = container(scrollable(list).height(Length::Shrink))
+                    .style(container::bordered_box)
+                    .padding(2);
+                // The overlay reports its own Escape before the global shortcut
+                // repeats it; a distinct dismiss message lets the later repeat
+                // be swallowed with the list already closed.
+                let value = crate::ui::color_select::editable_drop_down_below(
+                    head.into(),
+                    popup.into(),
+                    None,
+                    Length::Shrink,
+                    Message::PropBlockPickerDismiss { key, quick },
+                    open,
+                );
+                let row = prop_row_widget(label, value);
                 if description.is_empty() {
                     row
                 } else {
@@ -2469,6 +2501,28 @@ mod tests {
         active_key_focused, attr_edit_key, build_field_key_map, hatch_pattern_matches,
         hatch_preview_scale, prop_attr_field_id, prop_geom_field_id, FieldKey,
     };
+
+    /// The list holds values that drive the block's geometry; the rows it
+    /// covers must not show through it or the selection band, in any theme.
+    #[test]
+    fn dynamic_value_list_paints_opaque_in_every_theme() {
+        fn is_opaque(background: iced::Background) -> bool {
+            matches!(background, iced::Background::Color(color) if color.a == 1.0)
+        }
+
+        for theme in crate::app::config::all_themes() {
+            let popup = iced::widget::container::bordered_box(&theme);
+            assert!(
+                popup.background.is_some_and(is_opaque),
+                "{theme}: list surface must be opaque"
+            );
+            let head = iced::widget::container::bordered_box(&theme);
+            assert!(
+                head.background.is_some_and(is_opaque),
+                "{theme}: list head must be opaque"
+            );
+        }
+    }
 
     #[test]
     fn transparency_input_keeps_focus_when_dropdown_opens_and_closes() {

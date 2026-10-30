@@ -2073,7 +2073,8 @@ impl OpenCADStudio {
         } else {
             prop_vertex
         };
-        let prop_vertex_indicator_active = if cur_handles == prev_handles {
+        let same_selection = cur_handles == prev_handles;
+        let prop_vertex_indicator_active = if same_selection {
             self.tabs[i].properties.prop_vertex_indicator_active
         } else {
             false
@@ -2083,7 +2084,7 @@ impl OpenCADStudio {
         crate::entities::table::set_prop_current_cell_active(prop_vertex_indicator_active);
 
         let annotation_scale_handle = self.tabs[i].scene.displayed_annotation_scale_handle();
-        let new_panel = {
+        let mut new_panel = {
             let selected = self.tabs[i].scene.selected_entities();
             let mut panel = match selected.len() {
                 0 => {
@@ -3009,6 +3010,24 @@ filter={:.1} local={:.1} aggregate={:.1} entities={}",
             }
             panel
         };
+        // An open dynamic-value list belongs to the row it was opened from, so
+        // the rebuild keeps it only while that row is still on the panel.
+        let old_panel = &self.tabs[i].properties;
+        let keeps_picker = old_panel.open_block_picker.is_some_and(|(open, _)| {
+            same_selection
+                && new_panel.sections.iter().any(|section| {
+                    section.props.iter().any(|property| {
+                        matches!(
+                            &property.value,
+                            crate::scene::model::object::PropValue::BlockChoice { key, .. }
+                                if *key == open
+                        )
+                    })
+                })
+        });
+        if keeps_picker {
+            new_panel.open_block_picker = old_panel.open_block_picker;
+        }
 
         self.tabs[i].properties = new_panel;
         self.refresh_selected_grips();

@@ -638,3 +638,197 @@ fn block_test_close_others_discards_the_test_without_prompting() {
     assert!(app.active_modal.is_none());
     assert!(app.tabs[source].active_block_edit.is_some());
 }
+
+/// A Test Block whose properties panel carries a live Lookup choice row.
+fn lookup_choice_tab() -> (OpenCADStudio, usize) {
+    use crate::scene::{block_actions, block_distance_parameter as distance, block_lookup};
+
+    let (mut app, source, _) = fixture();
+    let definition = app.tabs[source]
+        .active_block_edit_session()
+        .unwrap()
+        .br_handle;
+    let line = app.tabs[source]
+        .scene
+        .document
+        .block_records
+        .get("SAMPLE")
+        .unwrap()
+        .entity_handles[0];
+    let doc = &mut app.tabs[source].scene.document;
+    let parameter = distance::create(
+        doc,
+        definition,
+        distance::Kind::Linear,
+        Vector3::new(10.0, 20.0, 0.0),
+        Vector3::new(12.0, 20.0, 0.0),
+        Vector3::new(10.0, 21.0, 0.0),
+    )
+    .unwrap();
+    block_actions::create(
+        doc,
+        definition,
+        block_actions::Kind::Move,
+        parameter,
+        &[line],
+        glam::DVec3::new(10.0, 20.0, 0.0),
+    )
+    .unwrap();
+    let lookup_parameter =
+        block_lookup::create(doc, definition, Vector3::new(11.0, 21.0, 0.0)).unwrap();
+    let mut table = block_lookup::empty_table(
+        block_lookup::parameters(doc, definition)
+            .into_iter()
+            .find(|(handle, _)| *handle == lookup_parameter)
+            .unwrap()
+            .1,
+    );
+    table.columns.insert(
+        0,
+        block_lookup::properties(doc, definition)[0].column.clone(),
+    );
+    table.column_count = 2;
+    table.row_count = 2;
+    table.expressions = vec!["2".into(), "Small".into(), "4".into(), "Large".into()];
+    block_lookup::apply_table(doc, definition, lookup_parameter, table).unwrap();
+
+    let _ = app.open_block_test(source);
+    let test = app.active_tab;
+    let insert = app.tabs[test].block_test.as_ref().unwrap().insert;
+    app.tabs[test].scene.selected.insert(insert);
+    app.tabs[test].selected_handle = Some(insert);
+    app.refresh_properties();
+    (app, test)
+}
+
+fn lookup_choice_key(
+    app: &OpenCADStudio,
+    tab: usize,
+) -> crate::scene::model::object::BlockParameterKey {
+    use crate::scene::model::object::PropValue;
+    app.tabs[tab]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .find_map(|property| match &property.value {
+            PropValue::BlockChoice { key, .. } => Some(*key),
+            _ => None,
+        })
+        .expect("the Test Block exposes a Lookup choice")
+}
+
+fn open_lookup_list(
+    app: &mut OpenCADStudio,
+    tab: usize,
+) -> crate::scene::model::object::BlockParameterKey {
+    let key = lookup_choice_key(app, tab);
+    let _ = app.update(Message::PropBlockPickerToggle { key, quick: false });
+    assert_eq!(app.tabs[tab].properties.open_block_picker, Some((key, false)));
+    key
+}
+
+#[test]
+fn dynamic_value_list_stays_open_across_a_rebuild_of_the_same_rows() {
+    let (mut app, test) = lookup_choice_tab();
+    let key = open_lookup_list(&mut app, test);
+    app.refresh_properties();
+    assert_eq!(app.tabs[test].properties.open_block_picker, Some((key, false)));
+}
+
+#[test]
+fn dynamic_value_list_closes_when_its_row_leaves_the_panel() {
+    let (mut app, test) = lookup_choice_tab();
+    open_lookup_list(&mut app, test);
+    app.tabs[test].scene.selected.clear();
+    app.tabs[test].selected_handle = None;
+    app.refresh_properties();
+    assert_eq!(app.tabs[test].properties.open_block_picker, None);
+}
+
+#[test]
+fn switching_tabs_closes_the_dynamic_value_list() {
+    let (mut app, test) = lookup_choice_tab();
+    assert!(app.tabs.len() > 1, "the Test Block lives beside its drawing");
+    open_lookup_list(&mut app, test);
+    let other = (test + 1) % app.tabs.len();
+    let _ = app.update(Message::TabSwitch(other));
+    assert_eq!(app.tabs[test].properties.open_block_picker, None);
+}
+
+/// A flag naming a row that no longer exists must not survive just because
+/// another dynamic row is still on the panel.
+#[test]
+fn a_list_whose_row_is_gone_closes_even_when_other_choices_remain() {
+    let (mut app, test) = lookup_choice_tab();
+    let real = lookup_choice_key(&app, test);
+    let stale = crate::scene::model::object::BlockParameterKey {
+        parameter: codec::Handle::new(0x7fff),
+        ..real
+    };
+    let _ = app.update(Message::PropBlockPickerToggle {
+        key: stale,
+        quick: false,
+    });
+    app.refresh_properties();
+    assert_eq!(app.tabs[test].properties.open_block_picker, None);
+}
+
+/// Picking a value closes the list on both surfaces and by remount, since the
+/// selection can arrive from a picker that is not the one on screen.
+#[test]
+fn choosing_a_row_closes_the_list() {
+    let (mut app, test) = lookup_choice_tab();
+    let key = open_lookup_list(&mut app, test);
+    let _ = app.update(Message::PropBlockChoice { key, index: 1 });
+    assert_eq!(app.tabs[test].properties.open_block_picker, None);
+    let value = app.tabs[test]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .find_map(|property| match &property.value {
+            crate::scene::model::object::PropValue::BlockChoice { selected, options, .. } => {
+                Some(options.get(*selected).cloned())
+            }
+            _ => None,
+        });
+    assert_eq!(value.flatten().as_deref(), Some("Large"));
+}
+
+/// The overlay sees the Escape first and reports it as a dismissal; the global
+/// shortcut repeats the same keypress a moment later. The repeat must not clear
+/// the selection the list was opened for.
+#[test]
+fn the_overlay_escape_is_not_repeated_onto_the_selection() {
+    let (mut app, test) = lookup_choice_tab();
+    let key = open_lookup_list(&mut app, test);
+    let _ = app.update(Message::PropBlockPickerDismiss { key, quick: false });
+    assert_eq!(app.tabs[test].properties.open_block_picker, None);
+    let _ = app.update(Message::ShortcutPressed("ESCAPE".into()));
+    assert!(!app.tabs[test].scene.selected.is_empty());
+}
+
+/// A list whose panel is hidden is not on screen; its guard must let the keys
+/// through instead of swallowing them with nothing to close.
+#[test]
+fn a_hidden_properties_panel_does_not_swallow_escape() {
+    let (mut app, test) = lookup_choice_tab();
+    open_lookup_list(&mut app, test);
+    app.show_properties = false;
+    let _ = app.update(Message::ShortcutPressed("ESCAPE".into()));
+    assert!(app.tabs[test].scene.selected.is_empty());
+}
+
+/// The same rule for the Quick Properties copy, whose visibility is its own
+/// toggle rather than the dock's.
+#[test]
+fn a_hidden_quick_properties_copy_does_not_swallow_escape() {
+    let (mut app, test) = lookup_choice_tab();
+    let key = lookup_choice_key(&app, test);
+    let _ = app.update(Message::PropBlockPickerToggle { key, quick: true });
+    assert_eq!(app.tabs[test].properties.open_block_picker, Some((key, true)));
+    assert!(!app.quick_properties);
+    let _ = app.update(Message::ShortcutPressed("ESCAPE".into()));
+    assert!(app.tabs[test].scene.selected.is_empty());
+}

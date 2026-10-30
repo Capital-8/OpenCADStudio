@@ -670,6 +670,10 @@ pub(super) struct OpenCADStudio {
     clean_screen: bool,
     /// Properties opened on top of clean screen (Ctrl+1 while it is on).
     clean_screen_properties: bool,
+    /// The dynamic-value list closed itself a moment ago. The overlay reports
+    /// Escape before the global shortcut repeats it, so the repeat is dropped
+    /// instead of clearing the selection the list was opened for.
+    block_picker_dismissed: bool,
     /// Quick Properties: show a compact floating property panel on selection.
     quick_properties: bool,
     /// Canvas-space cursor position where Quick Properties was last opened.
@@ -4406,6 +4410,12 @@ pub enum Message {
     PropBlockInput { key: crate::scene::model::object::BlockParameterKey, value: String },
     PropBlockCommit(crate::scene::model::object::BlockParameterKey),
     PropBlockChoice { key: crate::scene::model::object::BlockParameterKey, index: usize },
+    /// Open or close the dynamic-value list of one row. It carries the surface
+    /// it was clicked on, so the same row's two copies toggle independently.
+    PropBlockPickerToggle { key: crate::scene::model::object::BlockParameterKey, quick: bool },
+    /// The list's overlay dismissed itself: a click outside it, or the same
+    /// Escape whose global shortcut arrives a moment later.
+    PropBlockPickerDismiss { key: crate::scene::model::object::BlockParameterKey, quick: bool },
 
     /// Toggle a collapsed coordinate group ("Position", "Scale", …) open or
     /// closed in the Properties panel, keyed `section:base`.
@@ -5463,6 +5473,7 @@ impl OpenCADStudio {
             otrack_kind: None,
             clean_screen: false,
             clean_screen_properties: false,
+            block_picker_dismissed: false,
             quick_properties: false,
             quick_properties_anchor: Point::new(12.0, 12.0),
             quick_properties_float: false,

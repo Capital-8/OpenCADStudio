@@ -343,6 +343,55 @@ impl OpenCADStudio {
         }
     }
 
+    /// Keep Escape, Enter, Space and the arrows out of the command line and the
+    /// viewport while a dynamic-value list is open: they would otherwise
+    /// dismiss the selection the list was opened for. Escape closes the list.
+    pub(in crate::app) fn intercept_block_picker_key(
+        &mut self,
+        msg: &Message,
+    ) -> Option<Task<Message>> {
+        let base = match msg {
+            Message::ShortcutPressed(key) => key.rsplit('+').next(),
+            _ => None,
+        };
+        let escape = matches!(msg, Message::CommandEscape) || matches!(base, Some("ESCAPE"));
+        let consumed = escape
+            || matches!(
+                msg,
+                Message::ArrowKeyPressed { .. }
+                    | Message::CommandLineArrowProbe { .. }
+                    | Message::CommandLineSpaceProbe
+                    | Message::CommandFinalize
+                    | Message::CommandSubmit
+                    | Message::CommandSpace
+            )
+            || matches!(base, Some("ENTER" | "RETURN" | "SPACE"));
+        if !consumed {
+            self.block_picker_dismissed = false;
+            return None;
+        }
+        if self.tabs[self.active_tab]
+            .properties
+            .open_block_picker
+            .is_none()
+        {
+            // The overlay reported its own Escape a moment earlier; the global
+            // shortcut repeats the same keypress with the list already closed.
+            // Dropping that repeat keeps the selection; any other key ends the
+            // window without being swallowed.
+            if self.block_picker_dismissed && escape {
+                self.block_picker_dismissed = false;
+                return Some(Task::none());
+            }
+            self.block_picker_dismissed = false;
+            return None;
+        }
+        if escape {
+            self.tabs[self.active_tab].properties.open_block_picker = None;
+        }
+        Some(Task::none())
+    }
+
     /// A printable key while the menu is open: a mnemonic picks its row;
     /// anything else closes the menu and is typed into the command line.
     fn context_menu_typed(&mut self, ch: Option<char>) -> Option<Task<Message>> {
