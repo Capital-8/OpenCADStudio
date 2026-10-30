@@ -148,6 +148,28 @@ fn number(
     }
 }
 
+/// Stable component name shared by the row id and the protocol metadata.
+pub(crate) fn component_id(component: &Component) -> String {
+    match component {
+        Component::X => "X".to_owned(),
+        Component::Y => "Y".to_owned(),
+        Component::Distance => "Distance".to_owned(),
+        Component::Angle => "Angle".to_owned(),
+        Component::Flip => "Flip".to_owned(),
+        Component::TableRow(_) => "TableRow".to_owned(),
+        Component::LookupOutput { column, .. } => format!("Lookup{column}"),
+    }
+}
+
+/// One dynamic row per parameter component, so a caller can address it alone.
+pub(crate) fn field_id(key: &Key) -> String {
+    format!(
+        "dyn_{:X}_{}",
+        key.parameter.value(),
+        component_id(&key.component).to_ascii_lowercase()
+    )
+}
+
 /// Rows follow the drawing's precision: lengths at LUPREC, angles at AUPREC
 /// as plain numbers (the reference prints parameter angles without a mark).
 fn display(value: f64, component: Component) -> String {

@@ -2284,6 +2284,122 @@ mod tests {
         assert_eq!(app.automation_op(r#"{"op":"entities"}"#)["total"], 0);
     }
     #[test]
+    fn control_property_reads_dynamic_rows_as_scalars_and_sets_them_by_id() {
+        use crate::scene::block_actions as actions;
+        use crate::scene::block_distance_parameter as distance;
+        use codec::entities::{Insert, Line};
+        use codec::types::Vector3;
+        use codec::EntityType;
+
+        let mut app = OpenCADStudio::new_for_test();
+        assert_eq!(request(&mut app, json!({"op":"new"}))["ok"], true);
+        let i = app.active_tab;
+        let scene = &mut app.tabs[i].scene;
+        scene.define_block_raw(
+            "DYN_PROPS",
+            Vector3::ZERO,
+            vec![EntityType::Line(Line::from_points(
+                Vector3::ZERO,
+                Vector3::UNIT_X,
+            ))],
+        );
+        let definition = scene.document.block_records.get("DYN_PROPS").unwrap().handle;
+        let member = scene.document.block_records.get("DYN_PROPS").unwrap().entity_handles[0];
+        let doc = &mut scene.document;
+        let parameter = distance::create(
+            doc,
+            definition,
+            distance::Kind::XY,
+            Vector3::ZERO,
+            Vector3::new(10., 20., 0.),
+            Vector3::new(10., 20., 0.),
+        )
+        .unwrap();
+        actions::create(
+            doc,
+            definition,
+            actions::Kind::Move,
+            parameter,
+            &[member],
+            glam::DVec3::ZERO,
+        )
+        .unwrap();
+        let reference = scene.add_entity(EntityType::Insert(Insert::new(
+            "DYN_PROPS",
+            Vector3::ZERO,
+        )));
+        assert_eq!(
+            request(&mut app, json!({"op":"select","type":"INSERT"}))["ok"],
+            true
+        );
+        assert_eq!(app.tabs[i].selected_handle, Some(reference));
+
+        let rows = |app: &mut OpenCADStudio| {
+            let read = request(app, json!({"op":"properties"}));
+            assert_eq!(read["ok"], true, "{read}");
+            let custom = read["sections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|section| section["title"] == "Custom")
+                .unwrap_or_else(|| panic!("no Custom group: {read}"));
+            custom["properties"].as_array().unwrap().clone()
+        };
+        let custom = rows(&mut app);
+        let numeric: Vec<_> = custom
+            .iter()
+            .filter(|row| row["kind"] == "number")
+            .collect();
+        assert_eq!(numeric.len(), 2, "{custom:?}");
+        let mut ids = std::collections::BTreeSet::new();
+        for row in &numeric {
+            let value = row["value"]
+                .as_str()
+                .unwrap_or_else(|| panic!("scalar value expected: {row}"));
+            assert!(value.parse::<f64>().is_ok(), "{row}");
+            assert!(
+                !value.contains("BlockParameterKey"),
+                "debug text reached the value: {row}"
+            );
+            let id = row["id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("id expected: {row}"));
+            assert!(id.starts_with("dyn_"), "dynamic id expected: {row}");
+            assert!(ids.insert(id.to_string()), "duplicate id {id}: {custom:?}");
+            assert!(row["component"].is_string(), "{row}");
+            assert!(row["parameter"].is_string(), "{row}");
+        }
+        let x = numeric
+            .iter()
+            .copied()
+            .find(|row| row["component"] == "X")
+            .expect("X component row")
+            .clone();
+        let depth = app.tabs[i].history.undo_stack.len();
+        let changed = request(
+            &mut app,
+            json!({"op":"property","field":x["id"],"value":3}),
+        );
+        assert_eq!(changed["ok"], true, "{changed}");
+        assert_eq!(app.tabs[i].history.undo_stack.len(), depth + 1);
+        let after = rows(&mut app);
+        let value = after
+            .iter()
+            .find(|row| row["id"] == x["id"])
+            .and_then(|row| row["value"].as_str())
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap();
+        assert!((value - 3.0).abs() < 1e-6, "{value} {after:?}");
+        let other = after
+            .iter()
+            .find(|row| row["id"] != x["id"] && row["kind"] == "number")
+            .and_then(|row| row["value"].as_str())
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap();
+        assert!((other - 20.0).abs() < 1e-6, "{other}");
+    }
+
+    #[test]
     fn control_property_sets_dynamic_visibility_with_tooltip() {
         use crate::scene::block_visibility;
         use codec::entities::{Insert, Line};
