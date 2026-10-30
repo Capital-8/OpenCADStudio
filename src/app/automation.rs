@@ -718,7 +718,17 @@ impl OpenCADStudio {
 
     /// Handle one JSON request line and return the JSON response.
     #[cfg(any(test, not(target_arch = "wasm32")))]
+    /// Serve what plugins posted from their worker threads since the last
+    /// request; the window's timer does this in the GUI.
+    pub(crate) fn pump_plugin_requests(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = self.update(super::Message::DrainPluginRequests);
+        }
+    }
+
     pub(crate) fn automation_op(&mut self, line: &str) -> Value {
+        self.pump_plugin_requests();
         if let Ok(req) = serde_json::from_str::<Value>(line) {
             if req["protocol"].is_number() {
                 let id = req["request_id"].clone();
