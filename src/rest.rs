@@ -587,6 +587,9 @@ pub(crate) fn plan(method: &str, rest: &[&str], request: &HttpRequest) -> Plan {
             if let Some(v) = request.param("layer") {
                 request_json["layer"] = json!(v);
             }
+            if let Some(v) = request.param("xdata_app") {
+                request_json["xdata_app"] = json!(v);
+            }
             if let Some(v) = request.param("detail") {
                 request_json["detail"] = json!(v);
             }

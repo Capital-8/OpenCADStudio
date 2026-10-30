@@ -321,6 +321,16 @@ impl HostApi for PluginHostApi {
         }
     }
 
+    fn query_entities(&mut self, query: &str) -> Result<crate::host::EntityPage, String> {
+        match self.client.request(PluginRequest::QueryEntities {
+            query: query.to_string(),
+        }) {
+            Ok(PluginResponse::EntityPage(page)) => page,
+            Ok(other) => Err(format!("unexpected QueryEntities response: {other:?}")),
+            Err(e) => Err(format!("QueryEntities failed: {e}")),
+        }
+    }
+
     fn set_dirty(&mut self) {
         if let Err(e) = self.client.request(PluginRequest::SetDirty) {
             eprintln!("[plugin] set_dirty failed: {e}");

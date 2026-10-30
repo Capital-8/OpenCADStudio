@@ -907,7 +907,7 @@ impl OpenCADStudio {
             }
             "entities" => self.entity_summary(),
             "audit" => self.document_audit(&req),
-            "query" => self.entity_query(&req),
+            "query" => self.entity_query(self.active_tab, &req),
             "text_search" => self.automation_text_search(&req),
             "text_audit" => self.automation_text_audit(&req),
             "text_replace" => self.automation_text_replace(&req),
@@ -1203,8 +1203,7 @@ impl OpenCADStudio {
     }
 
     /// Query entities by identity, metadata and exact plane-curve relationships.
-    fn entity_query(&self, req: &Value) -> Value {
-        let i = self.active_tab;
+    pub(super) fn entity_query(&self, i: usize, req: &Value) -> Value {
         let tab = &self.tabs[i];
         if let Some(pair) = req["intersections"].as_array() {
             if pair.len() != 2 {
@@ -1249,6 +1248,7 @@ impl OpenCADStudio {
 
         let type_filter = req["type"].as_str();
         let layer_filter = req["layer"].as_str();
+        let xdata_filter = req["xdata_app"].as_str();
         let handles: Option<std::collections::HashSet<u64>> = req["handles"]
             .as_array()
             .map(|values| {
@@ -1346,7 +1346,11 @@ impl OpenCADStudio {
                 continue;
             }
             if type_filter.is_some_and(|value| !entity_type_matches(e, value))
-                || layer_filter.is_some_and(|value| e.common().layer != value)
+                || layer_filter.is_some_and(|pattern| {
+                    !crate::io::xref_model::wildcard_match(&e.common().layer, pattern)
+                })
+                || xdata_filter
+                    .is_some_and(|app| e.common().extended_data.get_record(app).is_none())
             {
                 continue;
             }

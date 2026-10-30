@@ -39,6 +39,16 @@ pub trait PluginRequestSender: Send + Sync {
     fn request(&self, req: PluginRequest) -> Result<PluginResponse, PluginRequestError>;
 }
 
+/// One page of [`HostApi::query_entities`] (API v14).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityPage {
+    pub entities: Vec<EntityType>,
+    /// Matches in the whole drawing, across all pages.
+    pub count: u64,
+    /// The `offset` of the next page; `None` on the last one.
+    pub next_offset: Option<u64>,
+}
+
 /// Error returned when a plugin worker thread cannot issue a host request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginRequestError(pub String);
@@ -1284,6 +1294,18 @@ pub trait HostApi {
     }
     /// Close the step [`HostApi::begin_undo_group`] opened.
     fn end_undo_group(&mut self) {}
+
+    /// The entities matching `query`, one page at a time (API v14). `query`
+    /// is the JSON of the control API's `query` operation, e.g.
+    /// `{"layer":"*-OPENBARE_RUIMTE_*","type":"Mesh","xdata_app":"OPENINFRA",
+    /// "bounds":[x0,y0,x1,y1],"offset":0,"limit":500}`: `layer` takes `*` and
+    /// `?`, `where` filters properties by JSON Pointer, and `limit` is at
+    /// most 10000. One message carries at most 64 MiB either way, so batch
+    /// writes and size pages to stay under it.
+    fn query_entities(&mut self, query: &str) -> Result<EntityPage, String> {
+        let _ = query;
+        Err("query_entities is not supported by this host".to_owned())
+    }
     fn set_dirty(&mut self);
 
     // ── Command line ────────────────────────────────────────────────────────

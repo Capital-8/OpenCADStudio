@@ -77,7 +77,8 @@
         "summary": "Query entities (type, layer, detail, offset, limit, fields, handles, bounds, near, contains_point, intersections)",
         "parameters": [
           {"name": "type", "in": "query", "schema": {"type": "string"}},
-          {"name": "layer", "in": "query", "schema": {"type": "string"}},
+          {"name": "layer", "in": "query", "description": "* and ? are wildcards", "schema": {"type": "string"}},
+          {"name": "xdata_app", "in": "query", "description": "Only entities carrying XDATA of this application", "schema": {"type": "string"}},
           {"name": "detail", "in": "query", "schema": {"type": "string", "enum": ["summary", "geometry", "full"]}},
           {"name": "offset", "in": "query", "schema": {"type": "integer"}},
           {"name": "limit", "in": "query", "schema": {"type": "integer"}},

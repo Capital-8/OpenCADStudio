@@ -1278,6 +1278,35 @@ impl<'a> HostSession<'a> {
         }
     }
 
+    pub fn query_entities(
+        &mut self,
+        query: &str,
+    ) -> Result<ocs_plugin_api::host::EntityPage, String> {
+        let mut request: serde_json::Value =
+            serde_json::from_str(query).map_err(|e| format!("query: {e}"))?;
+        if !request.is_object() {
+            return Err("query: expected a JSON object".to_owned());
+        }
+        request["detail"] = serde_json::json!("summary");
+        request["fields"] = serde_json::json!([]);
+        let answer = self.app.entity_query(self.tab, &request);
+        if answer["ok"] != true {
+            return Err(answer["error"].as_str().unwrap_or("query failed").to_owned());
+        }
+        let entities = answer["entities"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|entity| u64::from_str_radix(entity["handle"].as_str()?, 16).ok())
+            .filter_map(|handle| self.document().get_entity(Handle::new(handle)).cloned())
+            .collect();
+        Ok(ocs_plugin_api::host::EntityPage {
+            entities,
+            count: answer["count"].as_u64().unwrap_or(0),
+            next_offset: answer["next_offset"].as_u64(),
+        })
+    }
+
     pub fn end_undo_group(&mut self) {
         if self.undo_group_open() {
             if let Some(pending) = self.app.tabs[self.tab].history.pending.as_mut() {
@@ -3883,6 +3912,12 @@ impl HostApi for HostSession<'_> {
     }
     fn end_undo_group(&mut self) {
         self.end_undo_group()
+    }
+    fn query_entities(
+        &mut self,
+        query: &str,
+    ) -> Result<ocs_plugin_api::host::EntityPage, String> {
+        self.query_entities(query)
     }
     fn set_dirty(&mut self) {
         self.set_dirty()
