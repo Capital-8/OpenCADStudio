@@ -732,4 +732,45 @@ mod tests {
         );
         assert_eq!(shown, "+3.50");
     }
+
+    #[test]
+    fn a_block_insertion_point_field_reopens_unchanged() {
+        use codec::entities::Insert;
+        use codec::types::Vector3;
+        let door = Insert::new("DOOR", Vector3::new(4.0, 7.5, 0.0));
+        // The height of a block's insertion point, in the WCS.
+        let code = "\\AcObjProp Object(%<\\_ObjIdx 0>%).InsertionPoint \\f \"%lu2%pt2%pr2\"";
+        let (mut app, text, _) = editing(code, EntityType::Insert(door));
+        let state = app.field_dialog.as_ref().unwrap();
+        assert_eq!(state.object_prop, Some("InsertionPoint"));
+
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+        assert_eq!(written(&app, text), (code.to_string(), "7.50".to_string()));
+    }
+
+    #[test]
+    fn a_text_contents_field_reopens_unchanged() {
+        let mut room = MText::new();
+        room.value = "Salon".into();
+        // Another text's contents, in upper case.
+        let code = "\\AcObjProp Object(%<\\_ObjIdx 0>%).TextString \\f \"%tc1\"";
+        let (mut app, text, _) = editing(code, EntityType::MText(Box::new(room)));
+        let state = app.field_dialog.as_ref().unwrap();
+        assert_eq!(state.object_prop, Some("TextString"));
+
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+        assert_eq!(written(&app, text), (code.to_string(), "SALON".to_string()));
+    }
+
+    #[test]
+    fn a_reopened_wcs_point_field_stays_in_the_wcs() {
+        use codec::entities::Line;
+        use codec::types::Vector3;
+        let line = Line::from_points(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 3.5, 0.0));
+        let code = "\\AcObjProp Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pt2%pr2\"";
+        let (mut app, text, _) = editing(code, EntityType::Line(line));
+
+        let _ = app.on_field_dialog(FieldDialogMsg::Ok);
+        assert_eq!(written(&app, text).0, code);
+    }
 }
