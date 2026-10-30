@@ -40,7 +40,7 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// without a round trip through `select`; the dialog actions gained
 /// `dialog_discard` and `dialog_cancel`.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "25f1f800ae703de0b35254555840852f1a39b2c199dd21b79a3ecefdab8b6b4b";
+const TOOL_SCHEMA_DIGEST: &str = "31b9a8521e51fee379efeea3a7471fde1d7a7dea3ce3257b3f6e7fec411a7d2d";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
