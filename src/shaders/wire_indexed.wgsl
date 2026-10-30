@@ -295,7 +295,9 @@ fn in_dash(dist: f32, pat_len: f32, p0: vec4<f32>, p1: vec4<f32>, align_end: f32
         }
         d = ((dist - align_end + first_dash) % pat_len + pat_len) % pat_len;
     } else {
-        d = ((dist % pat_len) + pat_len) % pat_len;
+        // The cap before the start reads as the start (see wire.wgsl).
+        let from_start = max(dist, 0.0);
+        d = ((from_start % pat_len) + pat_len) % pat_len;
     }
 
     var pos = 0.0f;
