@@ -15,13 +15,10 @@ fn to_render(line: &Line) -> RenderEntity {
     if let Some(association) =
         codec::entities::CenterMarkAssociation::read(&line.common.extended_data)
     {
-        // As the stored block lines: the cross is Continuous, and each
-        // extension carries the object's linetype from its own start, running
-        // along the mark's axes. Every point gets its pattern station: the
-        // cross (and the detached badge) holds station 0 — inside the first
-        // dash — so it never breaks, whatever its length.
-        // ponytail: a gap-first linetype would hide the cross; none of the
-        // catalog's centre linetypes start with a gap.
+        // As the stored block lines: the cross (and the detached badge) is
+        // Continuous, and each extension is a line of its own in the object's
+        // linetype, running along the mark's axes and aligned at its ends as
+        // a single line is.
         let axes = crate::scene::centermark::dvec(association.plane_x)
             + crate::scene::centermark::dvec(association.plane_y);
         let segments: Vec<_> = crate::scene::centermark::render_segments(&association)
@@ -30,22 +27,20 @@ fn to_render(line: &Line) -> RenderEntity {
             .collect();
         let extensions = 2..crate::scene::centermark::mark_segments(&association).len();
         let mut points = Vec::with_capacity(segments.len() * 3);
-        let mut stations = Vec::with_capacity(segments.len() * 3);
+        let mut solid = Vec::with_capacity(segments.len() * 3);
         let mut key_vertices = Vec::with_capacity(segments.len() * 2 + 1);
         let mut tangent_geoms = Vec::with_capacity(segments.len());
         for (index, segment) in segments.iter().enumerate() {
-            if index > 0 {
-                points.push([f64::NAN; 3]);
-                stations.push(0.0);
-            }
-            let length = if extensions.contains(&index) {
-                segment[0].distance(segment[1]) as f32
+            let target = if extensions.contains(&index) {
+                &mut points
             } else {
-                0.0
+                &mut solid
             };
-            stations.extend([0.0, length]);
+            if !target.is_empty() {
+                target.push([f64::NAN; 3]);
+            }
             for point in segment {
-                points.push([point.x, point.y, point.z]);
+                target.push([point.x, point.y, point.z]);
                 key_vertices.push([point.x, point.y, point.z]);
             }
             tangent_geoms.push(TangentGeom::Line {
@@ -67,11 +62,13 @@ fn to_render(line: &Line) -> RenderEntity {
             pick_tris: Vec::new(),
             object: RenderObject::BoundaryLines {
                 points,
-                stations,
+                stations: Vec::new(),
                 point_segments: Vec::new(),
                 station_pieces: Vec::new(),
                 source_length: 0.0,
-                plinegen: false,
+                plinegen: true,
+                separate_runs: true,
+                solid,
             },
             snap_pts: Vec::new(),
             tangent_geoms,
