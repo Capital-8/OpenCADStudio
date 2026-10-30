@@ -1376,6 +1376,12 @@ pub trait HostApi {
 
     /// Read a named host setting without invoking the command dispatcher.
     /// Names are case-insensitive. Hosts may support only a subset.
+    ///
+    /// The desktop host reads `CLAYER`, `CTAB`, `CTEXTSTYLE`, `CELTYPE` and
+    /// `SNAPANG`, and the drawing's numeric and point variables (`INSUNITS`,
+    /// `MEASUREMENT`, `LUNITS`, `LUPREC`, `LTSCALE`, `PDMODE`, `PDSIZE`,
+    /// `EXTMIN`, `EXTMAX`, `LIMMIN`, `LIMMAX`, `INSBASE`, ...). A point comes
+    /// back as text, `"x,y,z"`.
     fn system_variable(&self, _name: &str) -> Option<HostSettingValue> {
         None
     }

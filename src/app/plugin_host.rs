@@ -1273,7 +1273,26 @@ impl<'a> HostSession<'a> {
             "CTAB" => Some(HostSettingValue::Text(
                 self.app.tabs[self.tab].scene.current_layout.clone(),
             )),
-            _ => None,
+            "CTEXTSTYLE" => Some(HostSettingValue::Text(
+                self.document().header.current_text_style_name.clone(),
+            )),
+            "CELTYPE" => Some(HostSettingValue::Text(
+                self.document().header.current_linetype_name.clone(),
+            )),
+            // Every numeric and point variable `getvar` reads; a point comes
+            // as "x,y,z".
+            other => {
+                let read = crate::app::quick_calc::sysvars(&self.app.tabs[self.tab]);
+                match (read.0)(&other.to_ascii_lowercase())? {
+                    crate::app::calc::SysVar::Number(value) => {
+                        Some(HostSettingValue::Number(value))
+                    }
+                    crate::app::calc::SysVar::Point(p) => {
+                        Some(HostSettingValue::Text(format!("{},{},{}", p.x, p.y, p.z)))
+                    }
+                    crate::app::calc::SysVar::Text => None,
+                }
+            }
         }
     }
 
