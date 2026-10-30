@@ -537,10 +537,13 @@ of up to six ascending knots in [0,1], or `Ramp::Sampled` of up to 4096
 slots — the vocabulary any alignment library restates its own laws with).
 The host knows no species and validates the STRUCTURE only; the record-model
 consistency checks are the declaring plugin's own. The host evaluates, then
-audits seams *at the record-model tolerances* (the evaluated end of segment
-i must restate segment i+1's declared start — point, direction/gradient,
-where the profile's declared start slope is the next ramp's own start
-value); a refusal names the audited pair and changes nothing (no entities,
+audits seams *at the instance's own declared tolerance* (the evaluated
+end of segment i must restate segment i+1's declared start — point,
+direction/gradient, where the profile's declared start slope is the next
+ramp's own start value — and the same `PluginClassInstance.tolerance`
+number bounds the chord carriers: point seams read it as meters, the
+plan's bearing seam as radians, the profile's slope seam as the
+gradient family); a refusal names the audited pair and changes nothing (no entities,
 no undo step). Passing designs stage as exact carriers derived GENERICALLY
 (a constant plan curvature as `Line` (zero) or `Arc`; a profile ramp that
 is an at-most-quadratic polynomial as an exact clamped Hermite spline of
@@ -555,7 +558,8 @@ through the same pending-scope machinery as `set_reference_only`) and the
 undo composition is the entity-write contract: the plugin's open `push_undo`
 scope is joined, otherwise one labeled step ("Stage parametric chain").
 `sample_parametric(chain, s)` exposes the same engine as a pure read
-(point/direction at chain position *s*; validates + audits per call; no
+(point/direction at chain position *s*; validates every segment per call —
+the seam audit belongs to staging, not to the pure read; no
 document state, no undo, no publish). Regulations: `MAX_PLUGIN_LIVE_ENTITIES`
 caps the staged set; an empty chain refuses. The lane's bench
 (`cargo bench --bench parametric_display_staging`) pins the budgets:

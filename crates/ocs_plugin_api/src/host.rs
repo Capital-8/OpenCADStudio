@@ -1145,8 +1145,9 @@ pub struct CustomGripResponse {
     #[serde(default)]
     pub descriptor: Option<PluginDisplayDescriptor>,
     /// (API v14, additive) THE per-move re-derivation tolerance of a
-    /// descriptor-backed drag â€” the same tolerance the plugin staged its
-    /// instance with. `Some` must accompany the Begin answer's `descriptor`
+    /// descriptor-backed drag — the same tolerance the plugin staged its
+    /// instance with: it bounds the drag's chord fits AND the per-move
+    /// seam continuity reads (one declared accuracy). `Some` must accompany the Begin answer's `descriptor`
     /// (the host never invents a frame budget: a descriptor without a finite
     /// positive tolerance leaves the v12 streaming semantics untouched, with
     /// one headline in the error queue). Older hosts deserialize the field
@@ -1779,7 +1780,9 @@ pub trait HostApi {
     /// ramp an arc; a profile ramp that is an at-most-quadratic polynomial
     /// in the run stages an exact clamped Hermite spline of degree up to 3,
     /// a constant profile slope a line) and bounded LwPolyline chords within
-    /// `tolerance` otherwise (table ramps and every other law — measured,
+    /// `tolerance` otherwise — the same `tolerance` bounds the seam
+    /// audit's continuity reads (one declared accuracy per chain) —
+    /// (table ramps and every other law — measured,
     /// refined chords, never a guessed shape). Chains are audited
     /// seam-to-seam BEFORE anything is staged
     /// (refused with the audited pair named on mismatch), and a chain that
@@ -2235,9 +2238,12 @@ pub struct PluginClassInstance {
     pub schema_version: u32,
     /// The host-evaluated display design.
     pub design: PluginDisplayDescriptor,
-    /// The display carrier tolerance (chain designs: the chord tolerance
-    /// for the table-law ramps; the record-model seam tolerances apply
-    /// regardless).
+    /// The instance's own tolerance (chain designs: BOTH readings — the
+    /// carrier tolerance of the table-law ramps' chords AND the seam
+    /// continuity bound of the chain's audited welds: the point seam
+    /// reads it as meters, the plan's bearing seam as radians, the
+    /// profile's slope seam as the gradient family). The declared
+    /// accuracy is the record model's own declaration, one number.
     #[serde(default)]
     pub tolerance: f64,
     /// Layer for the staged display set; empty = the host's default layer.

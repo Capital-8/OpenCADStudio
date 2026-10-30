@@ -31,9 +31,11 @@
 //!   rate, refined by measurement — never a guessed shape); the plan
 //!   integrator carries a swing budget (65 536 half-radian sub-intervals)
 //!   and a law past it refuses — a hang cannot hide behind legal data;
-//! - chains are audited seam-to-seam against the record model's continuity
-//!   tolerances (points 1e-6 m, plan directions 1e-9 rad, profile
-//!   gradients 1e-6) and refused with the audited pair named; a chain
+//! - chains are audited seam-to-seam at the declared tolerance — the
+//!   instance's `PluginClassInstance.tolerance` (or the raw staging call's
+//!   tolerance argument): the point seam reads it as meters, the plan's
+//!   bearing seam as radians, the profile's slope seam as the gradient
+//!   family (`tolerance * (1 + g^2)`) — and refusals name the audited pair; a chain
 //!   that would stage more display entities than `MAX_PLUGIN_LIVE_ENTITIES`
 //!   publishes nothing; non-finite or structurally broken ramp data
 //!   refuses at validation (the host refuses nothing it cannot state
@@ -52,16 +54,6 @@ use ocs_plugin_api::host::{
 use std::f64::consts::PI;
 
 const TWO_PI: f64 = std::f64::consts::TAU;
-
-/// Seam continuity tolerance for points, in meters: the record model's own
-/// alignment point tolerance.
-pub const SEAM_POINT_EPS: f64 = 1.0e-6;
-/// Seam continuity tolerance for directions, in radians: the record model's
-/// own alignment direction tolerance.
-pub const SEAM_DIRECTION_EPS: f64 = 1.0e-9;
-/// Seam continuity tolerance for gradients, in decimal fractions: the
-/// record model's own alignment gradient tolerance.
-pub const SEAM_GRADIENT_EPS: f64 = 1.0e-6;
 
 /// Upper chord count per segment: once the refinement loop would exceed
 /// this, the tolerance is judged unattainable and staging refuses instead
@@ -550,10 +542,13 @@ fn evaluate_segment_at(
 
 /// Audit every declared segment pair seam-to-seam: the evaluated end of
 /// segment i must equal the declared start of segment i+1 in point, and
-/// in direction (the record model's continuity tolerances — plan in the
-/// bearing form, profile in the gradient form; the profile's declared
-/// start slope is the next segment's own ramp start value).
-fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
+/// in direction. The continuity bound is the caller's OWN tolerance — the
+/// declaring instance's `PluginClassInstance.tolerance` (or the raw
+/// `stage_parametric_chain` tolerance argument): one number, the record
+/// model's declared accuracy, read as meters for the point seam, radians
+/// for the plan's bearing seam, and the gradient's relative family for
+/// the profile's slope seam. The host adds no hard-coded seam constant.
+fn audit_chain(chain: &ParametricChain, tolerance: f64) -> Result<Vec<Vitals>, String> {
     let mut vitals = Vec::with_capacity(chain.segments.len());
     for (index, segment) in chain.segments.iter().enumerate() {
         let v =
@@ -573,7 +568,7 @@ fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
         let gap = ((end.point[0] - next.start_point[0]).powi(2)
             + (end.point[1] - next.start_point[1]).powi(2))
         .sqrt();
-        if gap > SEAM_POINT_EPS {
+        if gap > tolerance {
             return Err(format!(
                 "seam segment {index} to {}: the evaluated end ({:.6}, {:.6}) is {gap:.9} m away from the next segment's declared start ({:.6}, {:.6}); the chain is not continuous",
                 index + 1,
@@ -587,7 +582,7 @@ fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
             ParametricPlane::Plan => {
                 let realized = end.direction[1].atan2(end.direction[0]);
                 let turn = angle_distance(realized, next.start_direction);
-                if turn > SEAM_DIRECTION_EPS {
+                if turn > tolerance {
                     return Err(format!(
                         "seam segment {index} to {}: the evaluated end direction ({realized:.12} rad) does not restate the declared start direction ({:.12} rad) of the next segment; the chain is not tangentially continuous",
                         index + 1,
@@ -602,7 +597,7 @@ fn audit_chain(chain: &ParametricChain) -> Result<Vec<Vitals>, String> {
                 let realized_gradient = end.direction[1] / end.direction[0];
                 let declared = ramp_eval(&next.def.ramp, 0.0);
                 if (realized_gradient - declared).abs()
-                    > SEAM_GRADIENT_EPS * (1.0 + declared.abs() * declared.abs())
+                    > tolerance * (1.0 + declared.abs() * declared.abs())
                 {
                     return Err(format!(
                         "seam segment {index} to {}: the evaluated end gradient ({realized_gradient:.9}) does not restate the declared start gradient ({declared:.9}) of the next segment",
@@ -832,7 +827,7 @@ pub fn build_display_entities(
     if !tolerance.is_finite() || tolerance <= 0.0 {
         return Err("a positive finite tolerance is required".to_owned());
     }
-    let vitals = audit_chain(chain)?;
+    let vitals = audit_chain(chain, tolerance)?;
     // Cap pre-check (the published ceiling): nothing is staged when the
     // chain's display footprint would exceed the live-entity cap.
     let mut estimate = 0usize;
@@ -1327,7 +1322,7 @@ mod tests {
             arc.center.x + arc.radius * arc.end_angle.cos(),
             arc.center.y + arc.radius * arc.end_angle.sin(),
         ];
-        let vitals = audit_chain(&arc_chain).unwrap();
+        let vitals = audit_chain(&arc_chain, 1.0e-3).unwrap();
         let evaluated = evaluate_segment_at(
             ParametricPlane::Plan,
             &arc_chain.segments[0],
@@ -1494,7 +1489,7 @@ mod tests {
             joint.point,
             realized,
         ));
-        audit_chain(&chain).expect("the welded three-law chain audits green");
+        audit_chain(&chain, 1.0e-3).expect("the welded three-law chain audits green");
         let (entities, carriers) = build_display_entities(&chain, 1e-3).expect("builds");
         assert_eq!(entities.len(), 3);
         assert!(matches!(carriers[0], StagedCarrier::Exact));
@@ -1507,14 +1502,14 @@ mod tests {
         let mut chain = demo_plan_chain();
         // Break the seam: the closing line starts 1e-4 m away from the
         // spiral's evaluated end.
-        chain.segments[2].start_point[0] += 1e-4;
+        chain.segments[2].start_point[0] += 1e-2;
         let err = build_display_entities(&chain, 1e-3).unwrap_err();
         assert!(err.contains("seam segment 1 to 2"), "names the audited pair: {err}");
         assert!(err.contains("not continuous"), "{err}");
 
         // A tangential break refuses too: flip the closing line's direction.
         let mut chain = demo_plan_chain();
-        chain.segments[2].start_direction = (1.0 / -300.0) * 60.0 / 2.0 + 1e-4;
+        chain.segments[2].start_direction = (1.0 / -300.0) * 60.0 / 2.0 + 1e-2;
         let err = build_display_entities(&chain, 1e-3).unwrap_err();
         assert!(
             err.contains("tangentially continuous"),
@@ -1585,17 +1580,17 @@ mod tests {
         // Length window.
         let mut seg = segment_of(ParametricPlane::Plan, plan_line_def(60.0), [0.0, 0.0], 0.0);
         seg.def.length = 0.0;
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("must be greater than zero"), "{err}");
         seg.def.length = -5.0;
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("must be greater than zero"), "{err}");
 
         // Degree cap.
         let mut seg =
             segment_of(ParametricPlane::Plan, plan_line_def(60.0), [0.0, 0.0], 0.0);
         seg.def.ramp = Ramp::Polynomial { degree: 4, coeffs: [0.1; 4] };
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("at-most-cubic envelope"), "{err}");
 
         // Piecewise windows.
@@ -1605,49 +1600,70 @@ mod tests {
             count: 7,
             knots: [(0.0, 0.0); 6],
         };
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("the window is 1..=6"), "{err}");
         seg.def.ramp = piecewise_ramp(&[(0.0, 0.1), (0.5, 0.2), (0.4, 0.3)]);
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("do not ascend"), "{err}");
         seg.def.ramp = piecewise_ramp(&[(0.0, 0.1), (1.5, 0.3)]);
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("outside [0, 1]"), "{err}");
 
         // Sampled windows.
         let mut seg =
             segment_of(ParametricPlane::Plan, plan_line_def(60.0), [0.0, 0.0], 0.0);
         seg.def.ramp = Ramp::Sampled { n: 0, values: vec![] };
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("the window is 1..=4096"), "{err}");
         seg.def.ramp = Ramp::Sampled { n: 5000, values: vec![0.0; 5000] };
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("the window is 1..=4096"), "{err}");
         seg.def.ramp = Ramp::Sampled { n: 4, values: vec![0.1, 0.2, 0.3] };
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("but carries 3 values"), "{err}");
         seg.def.ramp = Ramp::Sampled {
             n: 3,
             values: vec![0.1, f64::NAN, 0.3],
         };
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("not finite"), "{err}");
 
         // Cross-slope data validates by the same rules.
         seg.def.ramp = ramp_const(0.1);
         seg.def.cross_slope = Some(Ramp::Sampled { n: 0, values: vec![] });
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("cross-slope ramp is not structural"), "{err}");
 
         // Continuity fields.
         seg.def.cross_slope = None;
         seg.start_point = [f64::NAN, 0.0];
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("start point is not finite"), "{err}");
         seg.start_point = [0.0, 0.0];
         seg.start_direction = f64::NAN;
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(err.contains("start direction is not finite"), "{err}");
+    }
+
+    #[test]
+    fn seam_audit_honours_the_declared_tolerance() {
+        // The seam bound = the caller's own tolerance, not a host
+        // constant: a 5e-4 m gap between two welded segments stages at
+        // a 1e-3 tolerance and refuses at a 1e-6 one; the audited pair
+        // keeps its name either way. The raw surface's own argument
+        // drives it identically.
+        let mut chain = demo_profile_chain();
+        chain.segments[1].start_point[1] += 5.0e-4;
+        let err = build_display_entities(&chain, 1.0e-6)
+            .err()
+            .expect("the tight tolerance refuses");
+        assert!(err.contains("seam segment 0 to 1"), "{err}");
+        assert!(err.contains("not continuous"), "{err}");
+        let (entities, _) = build_display_entities(&chain, 1.0e-3)
+            .expect("the declared tolerance honours the gap");
+        assert_eq!(entities.len(), 3);
+        audit_chain(&chain, 1.0e-9)
+            .expect_err("a 1e-9 demand refuses the same 5e-4 gap");
     }
 
     #[test]
@@ -1664,7 +1680,7 @@ mod tests {
             [0.0, 0.0],
             0.0,
         );
-        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg), 1.0e-3).unwrap_err();
         assert!(
             err.contains("exceeds the integrator's swing budget"),
             "{err}"
@@ -1685,7 +1701,7 @@ mod tests {
 
         // ---- the profile crest: ramp data in, joints propagated ----
         let vertical = demo_profile_chain();
-        audit_chain(&vertical).expect("the crest fixture audits (the mean-gradient seams are exact)");
+        audit_chain(&vertical, 1.0e-3).expect("the crest fixture audits (the mean-gradient seams are exact)");
 
         // THE DRAG: the crest's end gradient 0.06 -> 0.09 — the ramp data
         // itself ([0.01, 0.05] -> [0.01, 0.08]). The JOINT moved; the
@@ -1693,7 +1709,7 @@ mod tests {
         // cannot dodge, exactly the check the plugins' re-declares ride.
         let mut edited = vertical.clone();
         edited.segments[1].def.ramp = ramp_linear(0.01, 0.09);
-        let err = audit_chain(&edited).unwrap_err();
+        let err = audit_chain(&edited, 1.0e-3).unwrap_err();
         assert!(
             err.contains("seam segment 1 to 2"),
             "the stale joint refuses with the audited pair: {err}"
@@ -1724,7 +1740,7 @@ mod tests {
         edited.segments[2].def = profile_const_slope_def(80.0, joint_gradient);
         edited.segments[2].start_point = joint.point;
         edited.segments[2].start_direction = joint_gradient.atan();
-        audit_chain(&edited).expect("the honest re-declare audits green");
+        audit_chain(&edited, 1.0e-3).expect("the honest re-declare audits green");
 
         // The drag propagates the whole way: the tail's end rides the
         // moved joint (h = 11 + 0.09*80 = 18.2).
@@ -1777,7 +1793,7 @@ mod tests {
         );
         edited.segments[2].start_point = joint.point;
         edited.segments[2].start_direction = realized;
-        audit_chain(&edited).expect("the honest plan re-declare audits green");
+        audit_chain(&edited, 1.0e-3).expect("the honest plan re-declare audits green");
         let (_, carriers) = build_display_entities(&edited, 1e-3).expect("builds");
         assert!(matches!(carriers[1], StagedCarrier::Chords(_)));
     }
@@ -1830,7 +1846,7 @@ mod tests {
                 segments: vec![segments.last().unwrap().clone()],
                 layer: String::new(),
             };
-            let vitals = audit_chain(&one).unwrap();
+            let vitals = audit_chain(&one, 1.0e-3).unwrap();
             let end = evaluate_segment_at(ParametricPlane::Plan, &one.segments[0], &vitals[0], 60.0);
             cursor = end.point;
             heading += 60.0 / (2.0 * -300.0);
@@ -1840,7 +1856,7 @@ mod tests {
             segments,
             layer: String::new(),
         };
-        audit_chain(&chain).expect("the welded 50-segment chain audits");
+        audit_chain(&chain, 1.0e-3).expect("the welded 50-segment chain audits");
         let result = build_display_entities(&chain, 1e-4);
         let err = result.err().expect("the chain's footprint is over the cap");
         assert!(err.contains("MAX_PLUGIN_LIVE_ENTITIES"), "{err}");
