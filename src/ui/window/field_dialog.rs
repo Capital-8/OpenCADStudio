@@ -481,9 +481,9 @@ pub const THOUSANDS_SEPARATORS: &[(&str, Option<char>)] = &[
 /// three is the default and writes none).
 pub const COORDINATES: &[(&str, u8)] = &[("X, Y, Z", 7), ("X, Y", 3), ("X", 1), ("Y", 2), ("Z", 4)];
 
-/// Object properties that are points. Their fields read the property the
-/// way the Properties palette does (`AcObjProp.16.2`), in the current UCS,
-/// as level marks do.
+/// Object properties that are points. A new field reads them the way the
+/// Properties palette does (`AcObjProp.16.2`), in the current UCS, as level
+/// marks do; a field opened from the drawing keeps the evaluator it has.
 pub const POINT_PROPERTIES: &[&str] = &[
     "Center",
     "EndPoint",
@@ -491,6 +491,10 @@ pub const POINT_PROPERTIES: &[&str] = &[
     "Position",
     "StartPoint",
 ];
+
+/// Object properties whose value is text: they take a text case rather than
+/// a number format.
+pub const TEXT_PROPERTIES: &[&str] = &["Color", "EffectiveName", "Layer", "Linetype", "TextString"];
 
 /// The text between the brackets that follow `key` and its digits in a
 /// format picture (`%ct8[100]` → `100`).
@@ -544,6 +548,9 @@ pub struct FieldDialogState {
     pub object: Option<(codec::Handle, String)>,
     pub object_props: Vec<&'static str>,
     pub object_prop: Option<&'static str>,
+    /// Whether the object field opened from the drawing used the versioned
+    /// evaluator (`AcObjProp.16.2`); `None` for a new field.
+    pub object_versioned: Option<bool>,
     pub formula: String,
     /// Indexes into codec FORMULA_FORMATS and FORMULA_PRECISIONS.
     pub formula_format: usize,
@@ -610,6 +617,7 @@ impl FieldDialogState {
             object: None,
             object_props: Vec::new(),
             object_prop: None,
+            object_versioned: None,
             formula: String::new(),
             formula_format: 0,
             formula_precision: 0,
@@ -767,15 +775,22 @@ impl FieldDialogState {
             },
             FieldKind::Object => match (&self.object, self.object_prop) {
                 (Some((handle, _)), Some(prop)) => {
-                    let evaluator = if POINT_PROPERTIES.contains(&prop) {
+                    let versioned = self
+                        .object_versioned
+                        .unwrap_or_else(|| POINT_PROPERTIES.contains(&prop));
+                    let evaluator = if versioned {
                         "AcObjProp.16.2"
                     } else {
                         "AcObjProp"
                     };
                     let body = format!("\\{evaluator} Object(%<\\_ObjIdx 0>%).{prop}");
-                    match self.number_picture() {
-                        f if f.is_empty() => (body, vec![*handle]),
-                        f => (format!("{body} \\f \"{f}\""), vec![*handle]),
+                    if TEXT_PROPERTIES.contains(&prop) {
+                        (case(body), vec![*handle])
+                    } else {
+                        match self.number_picture() {
+                            f if f.is_empty() => (body, vec![*handle]),
+                            f => (format!("{body} \\f \"{f}\""), vec![*handle]),
+                        }
                     }
                 }
                 _ => ("\\AcObjProp".into(), vec![]),
@@ -850,6 +865,7 @@ impl FieldDialogState {
                 return None;
             }
             self.name = "Object";
+            self.object_versioned = Some(evaluator.starts_with("\\AcObjProp."));
             return Some(property.to_string());
         } else if evaluator == "\\AcDiesel" {
             self.name = "DieselExpression";
@@ -992,17 +1008,28 @@ fn indexed_object_ids(formula: &str) -> (String, Vec<codec::Handle>) {
 }
 
 /// The geometric properties a field can show for an object of this type.
+/// Its own properties first, then the ones every object has.
 pub fn object_properties(entity: &codec::EntityType) -> Vec<&'static str> {
     use codec::EntityType as E;
-    match entity {
-        E::Line(_) => vec!["Center", "EndPoint", "Length", "StartPoint"],
-        E::Circle(_) => vec!["Area", "Center", "Circumference", "Diameter", "Radius"],
-        E::Arc(_) => vec!["Center", "Length", "Radius"],
-        E::Ellipse(_) => vec!["Area", "Center"],
-        E::LwPolyline(_) | E::Polyline2D(_) | E::Spline(_) => vec!["Area", "Length"],
-        E::Hatch(_) => vec!["Area"],
-        _ => vec![],
-    }
+    let own: &[&'static str] = match entity {
+        E::Line(_) => &["Center", "EndPoint", "Length", "StartPoint"],
+        E::Circle(_) => &["Area", "Center", "Circumference", "Diameter", "Radius"],
+        E::Arc(_) => &["Center", "Length", "Radius"],
+        E::Ellipse(_) => &["Area", "Center"],
+        E::LwPolyline(_) | E::Polyline2D(_) | E::Spline(_) => &["Area", "Length"],
+        E::Hatch(_) => &["Area"],
+        E::Insert(_) => &[
+            "EffectiveName",
+            "InsertionPoint",
+            "XScaleFactor",
+            "YScaleFactor",
+            "ZScaleFactor",
+        ],
+        E::Text(_) | E::MText(_) => &["InsertionPoint", "TextString"],
+        _ => &[],
+    };
+    let general: [&'static str; 4] = ["Color", "Layer", "Linetype", "LinetypeScale"];
+    own.iter().chain(general.iter()).copied().collect()
 }
 
 #[derive(Debug, Clone)]
@@ -1585,7 +1612,16 @@ fn format_panel<'a>(state: &'a FieldDialogState) -> Element<'a, Message> {
                     .collect(),
                 180.0,
             ),
-            number_format_rows(state),
+            if state
+                .object_prop
+                .is_some_and(|p| TEXT_PROPERTIES.contains(&p))
+            {
+                column![text(t!("Format")).size(12), case_list(state)]
+                    .spacing(8)
+                    .into()
+            } else {
+                number_format_rows(state)
+            },
         ]
         .spacing(8)
         .into(),
@@ -1941,10 +1977,52 @@ mod tests {
             "\\AcObjProp Object(%<\\_ObjIdx 0>%).Area \\f \"%lu2%pr2%ds44%th46%ct8[0.0001]%ps[A, m²]\""
         );
 
+        // A text property takes a case instead of a number format.
+        state.object_prop = Some("Layer");
+        state.text_case = 1;
+        assert_eq!(
+            state.code().0,
+            "\\AcObjProp Object(%<\\_ObjIdx 0>%).Layer \\f \"%tc1\""
+        );
+        state.object_prop = Some("Area");
+        state.text_case = 0;
+
         // A factor of one, or one that is not a number, converts nothing.
         for factor in ["1", "abc", ""] {
             state.conversion = factor.into();
             assert!(!state.code().0.contains("%ct"), "{factor}");
         }
+    }
+
+    #[test]
+    fn a_new_point_field_reads_the_current_ucs() {
+        let mut state = FieldDialogState::new(FieldTarget::NewText);
+        state.name = "Object";
+        state.object = Some((codec::Handle::new(0x2A), "Block reference".into()));
+        state.object_prop = Some("InsertionPoint");
+        assert!(state.code().0.starts_with("\\AcObjProp.16.2 "));
+        state.object_prop = Some("XScaleFactor");
+        assert!(state.code().0.starts_with("\\AcObjProp "));
+    }
+
+    #[test]
+    fn a_block_reference_offers_its_own_and_the_general_properties() {
+        use codec::entities::Insert;
+        use codec::types::Vector3;
+        let door = codec::EntityType::Insert(Insert::new("DOOR", Vector3::ZERO));
+        assert_eq!(
+            super::object_properties(&door),
+            [
+                "EffectiveName",
+                "InsertionPoint",
+                "XScaleFactor",
+                "YScaleFactor",
+                "ZScaleFactor",
+                "Color",
+                "Layer",
+                "Linetype",
+                "LinetypeScale",
+            ]
+        );
     }
 }

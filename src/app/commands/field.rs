@@ -74,6 +74,7 @@ impl OpenCADStudio {
                         ));
                         state.object_prop = props.first().copied();
                         state.object_props = props;
+                        state.object_versioned = None;
                     }
                     self.active_modal = Some(crate::app::ModalKind::Field);
                     self.refresh_field_preview();
@@ -717,7 +718,7 @@ mod tests {
         use codec::entities::Line;
         use codec::types::Vector3;
         let line = Line::from_points(Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 3.5, 0.0));
-        let code = "\\AcObjProp Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pr2\"";
+        let code = "\\AcObjProp.16.2 Object(%<\\_ObjIdx 0>%).EndPoint \\f \"%lu2%pr2\"";
         let (mut app, text, _) = editing(code, EntityType::Line(line));
         assert!(app.field_dialog.as_ref().unwrap().preview.contains(", "));
 
