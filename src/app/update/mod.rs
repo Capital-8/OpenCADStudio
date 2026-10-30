@@ -4595,6 +4595,11 @@ impl OpenCADStudio {
                 );
                 Task::none()
             }
+            Message::RibbonLayerStateRestore(name) => {
+                self.ribbon.close_dropdown();
+                self.layer_state_selected = Some(name);
+                self.update(Message::LayerStateManagerRestore)
+            }
             Message::LayerStateManagerRestore => {
                 let i = self.active_tab;
                 let Some(name) = self.layer_state_selected.clone() else {

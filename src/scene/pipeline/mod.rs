@@ -3978,8 +3978,13 @@ analytic={:.1} regular={:.1} blocks={:.1}",
         self.gpu_point_clouds.upload(device, queue, set);
     }
 
-    pub fn set_point_cloud_view(&mut self, queue: &wgpu::Queue, light: [f32; 12]) {
-        self.gpu_point_clouds.set_view(queue, light);
+    pub fn set_point_cloud_view(
+        &mut self,
+        queue: &wgpu::Queue,
+        light: [f32; 12],
+        clip: &[[f32; 4]],
+    ) {
+        self.gpu_point_clouds.set_view(queue, light, clip);
     }
 
     /// Upload the frame's SDF text-quad vertices, and (re)build the GPU glyph

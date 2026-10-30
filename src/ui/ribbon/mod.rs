@@ -234,6 +234,8 @@ pub struct Ribbon {
     /// Live filter for the layer dropdown's search box (#343). Cleared on
     /// close so the next open starts unfiltered.
     pub layer_filter: String,
+    /// The drawing's saved layer states, restored from the layer dropdown.
+    pub layer_states: Vec<String>,
     /// Active object color — ACI / ByLayer / ByBlock.
     pub active_color: AcadColor,
     /// Colour-book identity (`BOOK$NAME`) of a colour picked from a colour
@@ -392,6 +394,7 @@ impl Ribbon {
             active_layer: String::new(),
             layer_infos: vec![],
             layer_filter: String::new(),
+            layer_states: Vec::new(),
             active_color: AcadColor::ByLayer,
             active_color_book: None,
             active_linetype: "ByLayer".to_string(),
@@ -1518,10 +1521,21 @@ impl Ribbon {
         .style(popup_row_style)
         .width(Fill)
         .padding([6, 10]);
+        // Saved layer states restore with one click, as the manager's
+        // Restore does.
+        let states = column(self.layer_states.iter().map(|name| {
+            button(text(name).size(11))
+                .on_press(Message::RibbonLayerStateRestore(name.clone()))
+                .style(popup_row_style)
+                .width(Fill)
+                .padding([4, 26])
+                .into()
+        }));
         let panel = container(
             column![
                 container(search).padding([4, 4]),
                 scrollable(column(rows)).height(Length::Fixed(list_h)),
+                states,
                 container(state_manager)
                     .width(Fill)
                     .padding([3, 4])

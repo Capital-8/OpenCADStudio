@@ -267,6 +267,29 @@ fn canonical_family_name_uncached(family: &str) -> Option<String> {
         }
     }
 
+    // 3b. Swiss 721 is Bitstream's Helvetica: without it, a free Helvetica
+    //     clone keeps the text's widths. The condensed cut (`Swis721 Cn BT`,
+    //     `swissc*.ttf`) only takes a narrow face, so lines still fit.
+    if family_lower.starts_with("swis721") || family_lower.starts_with("swiss") {
+        let condensed = family_lower.starts_with("swissc")
+            || family_lower.split_whitespace().any(|word| word == "cn");
+        let twins: &[&str] = if condensed {
+            &[
+                "TeX Gyre Heros Cn",
+                "Nimbus Sans Narrow",
+                "Arial Narrow",
+                "Liberation Sans Narrow",
+            ]
+        } else {
+            &["TeX Gyre Heros", "Nimbus Sans", "Helvetica", "Arial", "Liberation Sans"]
+        };
+        for twin in twins {
+            if let Some(matched) = families.iter().find(|&f| f.eq_ignore_ascii_case(twin)) {
+                return Some(matched.clone());
+            }
+        }
+    }
+
     // 4. Web: the common office/CAD families the client cannot have installed
     //    stand in via the fetched Noto set (#141). Runs before the fuzzy prefix
     //    match so "Arial" can never drift onto an arbitrary Noto name.
@@ -677,3 +700,4 @@ mod tests {
         );
     }
 }
+

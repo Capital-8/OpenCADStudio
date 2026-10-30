@@ -1566,6 +1566,33 @@ impl OpenCADStudio {
                 return Some(self.dispatch_command("DIMREASSOCIATE"));
             }
 
+            // DIMREGEN: every dimension draws its picture afresh, and the
+            // next save writes the new pictures.
+            "DIMREGEN" => {
+                let handles: Vec<_> = self.tabs[i]
+                    .scene
+                    .document
+                    .entities()
+                    .filter(|entity| {
+                        matches!(entity, codec::EntityType::Dimension(d)
+                            if !d.base().block_name.is_empty())
+                    })
+                    .map(|entity| entity.common().handle)
+                    .collect();
+                if !handles.is_empty() {
+                    self.push_undo_snapshot(i, "DIMREGEN");
+                    for &handle in &handles {
+                        self.tabs[i].scene.invalidate_dim_block_recorded(handle);
+                    }
+                    let changes: Vec<_> = handles
+                        .iter()
+                        .map(|&handle| (handle, crate::scene::ChangeKind::Modified))
+                        .collect();
+                    self.tabs[i].scene.bump_entities(&changes);
+                    self.tabs[i].dirty = true;
+                }
+            }
+
             "DIMDISASSOCIATE" | "DIMREASSOCIATE" => {
                 let handles = self.selected_editable_dimensions(i);
                 if handles.is_empty() {

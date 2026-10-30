@@ -1778,8 +1778,13 @@ fn angular_block_segs(
         vertex.y + a2.sin() * radius,
         vertex.z,
     );
-    out.push(dim_seg(p1, e1, ext_c));
-    out.push(dim_seg(p2, e2, ext_c));
+    // A ray point on the arc itself needs no extension line.
+    for (from, to) in [(p1, e1), (p2, e2)] {
+        let gap = ((to.x - from.x).powi(2) + (to.y - from.y).powi(2)).sqrt();
+        if gap > 1e-9 * radius.max(1.0) {
+            out.push(dim_seg(from, to, ext_c));
+        }
+    }
     let mut sweep = a2 - a1;
     if explicit_sweep.is_some() {
         while sweep <= 0.0 {
@@ -1814,6 +1819,61 @@ fn angular_block_segs(
         dim_c,
     ));
     out
+}
+
+/// The parts of segment `a`→`b` outside a rotated box (centre, half width,
+/// half height, rotation), clipped in the box's frame.
+fn outside_box(
+    a: Vector3,
+    b: Vector3,
+    gap: Option<(DVec3, f64, f64, f64)>,
+) -> Vec<(Vector3, Vector3)> {
+    let Some((centre, half_width, half_height, rotation)) = gap else {
+        return vec![(a, b)];
+    };
+    let (sin, cos) = rotation.sin_cos();
+    let local = |p: &Vector3| {
+        let (x, y) = (p.x - centre.x, p.y - centre.y);
+        (x * cos + y * sin, -x * sin + y * cos)
+    };
+    let (p, q) = (local(&a), local(&b));
+    let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+    // Liang-Barsky: the parameter range where the segment is inside.
+    let (mut enter, mut leave) = (0.0f64, 1.0f64);
+    for (step, room) in [
+        (-dx, p.0 + half_width),
+        (dx, half_width - p.0),
+        (-dy, p.1 + half_height),
+        (dy, half_height - p.1),
+    ] {
+        if step.abs() < 1e-12 {
+            if room < 0.0 {
+                return vec![(a, b)];
+            }
+        } else if step < 0.0 {
+            enter = enter.max(room / step);
+        } else {
+            leave = leave.min(room / step);
+        }
+    }
+    if enter >= leave {
+        return vec![(a, b)];
+    }
+    let at = |t: f64| {
+        Vector3::new(
+            a.x + (b.x - a.x) * t,
+            a.y + (b.y - a.y) * t,
+            a.z + (b.z - a.z) * t,
+        )
+    };
+    let mut parts = Vec::new();
+    if enter > 1e-9 {
+        parts.push((a, at(enter)));
+    }
+    if leave < 1.0 - 1e-9 {
+        parts.push((at(leave), b));
+    }
+    parts
 }
 
 /// The text anchor for a radial leader: the saved text middle point when set,
@@ -1950,6 +2010,8 @@ fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
     // halves are suppressed. When the arrows don't fit between the extension
     // lines (gap < 2·DIMASZ, arrows only) they flip to the outside with short
     // stubs unless DIMSOXD — matching the live fit logic. DIM-ARROWS-OUTSIDE.
+    // The dimension line stays open around the text, as drawn live.
+    let text_break = crate::entities::dimension::dimension_text_break_world(dim, doc);
     let push_dim_line =
         |result: &mut Vec<EntityType>, d1: Vector3, d2: Vector3, ux: f64, uy: f64| {
             let ticks = met.dimtsz > 1e-9;
@@ -1957,7 +2019,9 @@ fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
                 let dle = if ticks { met.dimdle } else { 0.0 };
                 let a = v3(d1.x - ux * dle, d1.y - uy * dle, d1.z);
                 let b = v3(d2.x + ux * dle, d2.y + uy * dle, d2.z);
-                result.push(make_seg(&a, &b, &dim_c));
+                for (a, b) in outside_box(a, b, text_break) {
+                    result.push(make_seg(&a, &b, &dim_c));
+                }
             }
             let gap = ((d2.x - d1.x).powi(2) + (d2.y - d1.y).powi(2)).sqrt();
             let outside = !ticks && met.dimasz > 1e-6 && gap < 2.0 * met.dimasz;
@@ -2179,16 +2243,59 @@ fn explode_dimension(dim: &Dimension, doc: &Document) -> Vec<EntityType> {
             }
         }
         Dimension::Angular2Ln(d) => {
-            result.extend(angular_block_segs(
-                d.angle_vertex,
-                d.first_point,
-                d.second_point,
-                d.dimension_arc,
-                &met,
-                &ext_c,
-                &dim_c,
-                None,
-            ));
+            // Two lines, `first_point`→`second_point` and `angle_vertex`→
+            // `definition_point`, measured at their crossing, as drawn live.
+            let dv = |p: Vector3| DVec3::new(p.x, p.y, p.z);
+            let lines = [
+                (dv(d.first_point), dv(d.second_point)),
+                (dv(d.angle_vertex), dv(d.definition_point)),
+            ];
+            let arc_point = dv(d.dimension_arc);
+            match crate::entities::dimension::two_line_angle_frame_f64(
+                lines[0].0, lines[0].1, lines[1].0, lines[1].1, arc_point,
+            ) {
+                Some((vertex, start, end)) => {
+                    let radius = vertex.distance(arc_point);
+                    // An extension line runs from the side's nearer end out
+                    // to the arc, and not at all where the arc crosses it.
+                    let foot = |angle: f64| {
+                        let dir = DVec3::new(angle.cos(), angle.sin(), 0.0);
+                        let deviation =
+                            |(a, b): (DVec3, DVec3)| (b - a).normalize_or(dir).cross(dir).length();
+                        let (a, b) = if deviation(lines[0]) <= deviation(lines[1]) {
+                            lines[0]
+                        } else {
+                            lines[1]
+                        };
+                        let along = |p: DVec3| (p - vertex).dot(dir);
+                        let arc_end = vertex + dir * radius;
+                        if radius >= along(a).min(along(b)) - 1e-9
+                            && radius <= along(a).max(along(b)) + 1e-9
+                        {
+                            arc_end
+                        } else if a.distance(arc_end) <= b.distance(arc_end) {
+                            a
+                        } else {
+                            b
+                        }
+                    };
+                    let v = |p: DVec3| Vector3::new(p.x, p.y, p.z);
+                    result.extend(angular_block_segs(
+                        v(vertex),
+                        v(foot(start)),
+                        v(foot(end)),
+                        d.dimension_arc,
+                        &met,
+                        &ext_c,
+                        &dim_c,
+                        Some((start, end)),
+                    ));
+                }
+                None => {
+                    result.push(make_seg(&d.first_point, &d.second_point, &ext_c));
+                    result.push(make_seg(&d.angle_vertex, &d.definition_point, &ext_c));
+                }
+            }
         }
         Dimension::Angular3Pt(d) => {
             result.extend(angular_block_segs(

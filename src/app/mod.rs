@@ -3916,6 +3916,8 @@ pub enum Message {
     LayerStateManagerDescription(String),
     LayerStateManagerSave,
     LayerStateManagerRestore,
+    /// Restore a saved layer state picked in the ribbon's layer dropdown.
+    RibbonLayerStateRestore(String),
     LayerStateManagerDelete,
     LayerStateManagerEdit,
     LayerStateEditorMaskToggle(LayerStateProperty),

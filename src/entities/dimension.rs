@@ -6072,34 +6072,78 @@ fn two_line_angle_frame(
     b2: Vec3,
     arc_point: Vec3,
 ) -> Option<(Vec3, f32, f32)> {
-    let (u, v) = (a2 - a1, b2 - b1);
-    let (t, _) = kernel::geom2d::line_line(
-        [a1.x as f64, a1.y as f64],
-        [u.x as f64, u.y as f64],
-        [b1.x as f64, b1.y as f64],
-        [v.x as f64, v.y as f64],
+    let (vertex, start, end) = two_line_angle_frame_f64(
+        a1.as_dvec3(),
+        a2.as_dvec3(),
+        b1.as_dvec3(),
+        b2.as_dvec3(),
+        arc_point.as_dvec3(),
     )?;
-    let vertex = a1 + u * t as f32;
+    Some((vertex.as_vec3(), start as f32, end as f32))
+}
+
+/// The box the drawing leaves open in the dimension line around the text, in
+/// world coordinates: centre, half width and half height (the gap included)
+/// and rotation. The saved block breaks its dimension line the same way.
+pub(crate) fn dimension_text_break_world(
+    dim: &Dimension,
+    document: &Document,
+) -> Option<(DVec3, f64, f64, f64)> {
+    let origin = dimension_precision_origin(dim);
+    let shifted = (origin != Vector3::ZERO).then(|| shift_dimension(dim, origin));
+    let local = shifted.as_ref().unwrap_or(dim);
+    let style_name = &local.base().style_name;
+    let style = document
+        .dim_styles
+        .iter()
+        .find(|s| {
+            s.name.eq_ignore_ascii_case(style_name)
+                || (style_name.trim().is_empty() && s.name.eq_ignore_ascii_case("Standard"))
+        })
+        .map(|style| resolved_dimension_style(style, local, document));
+    let style = style.as_ref();
+    let scale = style.map_or(1.0, |s| if s.dimscale > 1e-6 { s.dimscale } else { 1.0 });
+    let text_height = style.map_or(2.5, |s| s.dimtxt * scale);
+    let gap = dimension_text_layout(local, style, text_height, scale, Some(document)).break_box?;
+    Some((
+        gap.center.as_dvec3() + DVec3::new(origin.x, origin.y, origin.z),
+        f64::from(gap.half_width + gap.padding),
+        f64::from(gap.half_height + gap.padding),
+        gap.rotation,
+    ))
+}
+
+/// [`two_line_angle_frame`] in full precision, for the saved block.
+pub(crate) fn two_line_angle_frame_f64(
+    a1: DVec3,
+    a2: DVec3,
+    b1: DVec3,
+    b2: DVec3,
+    arc_point: DVec3,
+) -> Option<(DVec3, f64, f64)> {
+    let (u, v) = (a2 - a1, b2 - b1);
+    let (t, _) = kernel::geom2d::line_line([a1.x, a1.y], [u.x, u.y], [b1.x, b1.y], [v.x, v.y])?;
+    let vertex = a1 + u * t;
 
     // Two lines cross at four angles; the arc point picks one. Each line
     // contributes its direction and its reverse, so try the four pairs and keep
     // the one whose sweep both contains the arc point and is the shorter way
     // round — the dimension marks an angle, never its reflex twin.
-    let angle_of = |d: Vec3| d.y.atan2(d.x);
+    let angle_of = |d: DVec3| d.y.atan2(d.x);
     let target = angle_of(arc_point - vertex);
-    let mut best: Option<(f32, f32, f32)> = None;
-    for su in [1.0f32, -1.0] {
-        for sv in [1.0f32, -1.0] {
+    let mut best: Option<(f64, f64, f64)> = None;
+    for su in [1.0f64, -1.0] {
+        for sv in [1.0f64, -1.0] {
             let (from_u, from_v) = (angle_of(u * su), angle_of(v * sv));
             // Either line can be the one the sweep starts from; taking only
             // u→v leaves out half the angles at the crossing, and the half left
             // out is the one wanted whenever the lines are nearly parallel.
             for (start, end) in [(from_u, from_v), (from_v, from_u)] {
-                let sweep = (end - start).rem_euclid(std::f32::consts::TAU);
-                if sweep <= 1e-6 || sweep > std::f32::consts::PI {
+                let sweep = (end - start).rem_euclid(std::f64::consts::TAU);
+                if sweep <= 1e-6 || sweep > std::f64::consts::PI {
                     continue;
                 }
-                let into_target = (target - start).rem_euclid(std::f32::consts::TAU);
+                let into_target = (target - start).rem_euclid(std::f64::consts::TAU);
                 if into_target > sweep {
                     continue;
                 }

@@ -147,6 +147,15 @@ impl OpenCADStudio {
         self.tabs[i].active_layer = active.clone();
         self.tabs[i].layers.current_layer = active.clone();
         self.ribbon.set_layers(infos, &active);
+        let mut states: Vec<String> = self.tabs[i]
+            .scene
+            .document
+            .layer_states()
+            .into_iter()
+            .map(|state| state.name)
+            .collect();
+        states.sort_by_key(|name| name.to_lowercase());
+        self.ribbon.layer_states = states;
         let lt_items: Vec<ui::properties::LinetypeItem> = self.tabs[i]
             .scene
             .document
