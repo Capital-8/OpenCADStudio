@@ -1,5 +1,5 @@
 //! A complex linetype walks the whole entity, each run end-aligned like
-//! AutoCAD's "A" alignment: it begins and ends with a dash, its glyphs sit
+//! the "A" alignment: it begins and ends with a dash, its glyphs sit
 //! symmetrically, and a run shorter than one pattern is drawn solid.
 
 use std::collections::HashSet;

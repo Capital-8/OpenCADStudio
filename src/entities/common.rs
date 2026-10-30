@@ -264,10 +264,11 @@ fn dms(degrees: f64, prec: usize) -> String {
     let a = degrees.abs();
     let decimals = prec.saturating_sub(4).min(11);
     // Round before splitting so seconds carry into minutes and degrees.
-    let (unit, label) = match prec {
-        0 => (3600.0, 0),
-        1 | 2 => (60.0, 1),
-        _ => (10f64.powi(-(decimals as i32)), 2),
+    let unit = dms_unit_seconds(prec);
+    let label = match prec {
+        0 => 0,
+        1 | 2 => 1,
+        _ => 2,
     };
     let ticks = (a * 3600.0 / unit).round() * unit;
     let d = (ticks / 3600.0).trunc();
@@ -281,6 +282,16 @@ fn dms(degrees: f64, prec: usize) -> String {
     }
 }
 
+/// The seconds one step of a degrees/minutes/seconds angle at `prec` is:
+/// a degree, a minute, a second, then a decimal of it per step past 4.
+fn dms_unit_seconds(prec: usize) -> f64 {
+    match prec {
+        0 => 3600.0,
+        1 | 2 => 60.0,
+        _ => 10f64.powi(-(prec.saturating_sub(4).min(11) as i32)),
+    }
+}
+
 /// Surveyor's units: a bearing away from north or south, toward east or west,
 /// so the angle is never more than a quarter turn — `N 45d0'0" E`.
 ///
@@ -288,8 +299,9 @@ fn dms(degrees: f64, prec: usize) -> String {
 /// the single letter, which is also what keeps a 90° angle from reading as the
 /// contradictory `N 90d0'0" E`.
 fn surveyor(value_rad: f64, prec: usize) -> String {
-    // Quantize before choosing a cardinal or quadrant.
-    let scale = 3600.0 * 10f64.powi(prec.min(15) as i32);
+    // Quantize as the bearing is written, before choosing a cardinal or
+    // quadrant: steps per degree.
+    let scale = 3600.0 / dms_unit_seconds(prec);
     let turn = 360.0 * scale;
     let ticks = (value_rad.to_degrees().rem_euclid(360.0) * scale)
         .round()

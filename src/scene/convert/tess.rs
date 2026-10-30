@@ -1483,7 +1483,7 @@ fn tessellate_entity_inner(
                     .collect()
             });
             // A NaN break starts the pattern over (PLINEGEN off: at every
-            // vertex), and each run is end-aligned on its own length, AutoCAD's
+            // vertex), and each run is end-aligned on its own length, the
             // "A" alignment: it begins and ends with a dash, and a run shorter
             // than one pattern is drawn solid.
             let mut wires = Vec::new();

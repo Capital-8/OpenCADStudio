@@ -617,7 +617,7 @@ pub(crate) fn add_leader_line(ml: &mut MultiLeader, arrow: codec::types::Vector3
         .flat_map(|root| root.lines.first())
         .next()
         .cloned();
-    // AutoCAD gives a new leader line the lowest index no line uses. The
+    // A new leader line takes the lowest index no line uses. The
     // line count repeats an index once a leader has been removed.
     let used: Vec<i32> = ml
         .context
@@ -1935,7 +1935,7 @@ pub(crate) fn block_content_insert(
     })?;
     let mut insertion = ml.context.block_content_location;
     if ml.block_connection_type == BlockContentConnectionType::BlockExtents {
-        // AutoCAD stores the block's insertion point in the block content
+        // Other writers store the block's insertion point in the block content
         // location, already moved off the landing by the extents; derive it
         // again from the content base point so it is not moved twice.
         insertion = ml.context.content_base_point;
@@ -3049,7 +3049,7 @@ mod tests {
     #[test]
     fn test_added_leader_line_takes_lowest_free_index() {
         // Remove the first leader, then add one: the new line must not repeat
-        // the index of the line that is left (AutoCAD takes the free 0).
+        // the index of the line that is left (it takes the free 0).
         let mut ml = MultiLeader::default();
         ml.content_type = LeaderContentType::MText;
         add_leader_line(&mut ml, codec::types::Vector3::new(0.0, 0.0, 0.0));
@@ -3275,11 +3275,11 @@ mod tests {
         }
     }
 
-    /// Values from an AutoCAD-made MLEADER: block LABEL (circle r4 at its
-    /// base point), landing at 60,5 pointing right, gap 0.36. AutoCAD stores
+    /// Values from an MLEADER made in the reference program: block LABEL (circle r4 at its
+    /// base point), landing at 60,5 pointing right, gap 0.36. It stores
     /// the block's insertion point 64.36,5 as the block content location.
     #[test]
-    fn block_content_insert_uses_autocad_insertion_point() {
+    fn block_content_insert_uses_the_stored_insertion_point() {
         use codec::types::Vector3;
         let mut doc = Document::default();
         let mut record = codec::tables::BlockRecord::new("LABEL");

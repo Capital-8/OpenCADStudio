@@ -18,8 +18,8 @@ impl OpenCADStudio {
     /// The layer a new object governed by `name` takes: that layer (created
     /// when it does not exist yet) or the current layer.
     pub(crate) fn new_variable_layer(&mut self, i: usize, name: &str) -> String {
-        // A name AutoCAD refuses (HPLAYER rejects `bad/name`) would create
-        // a layer AutoCAD cannot name; such a value means the current layer.
+        // A value that is no valid layer name (`bad/name`) would create a
+        // layer no other program can name; it means the current layer.
         match self
             .layer_variable(i, name)
             .filter(|layer| crate::scene::valid_block_name(layer))
