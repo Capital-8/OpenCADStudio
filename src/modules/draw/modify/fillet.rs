@@ -427,6 +427,68 @@ fn lwpoly_nearest_seg(poly: &LwPolyline, click: [f64; 2]) -> usize {
     best_idx
 }
 
+/// A polyline's bulged segment as the counter-clockwise arc it draws, and
+/// whether the polyline runs it clockwise (a negative bulge): then the arc
+/// starts at the segment's end vertex.
+fn lwpoly_seg_as_arc(poly: &LwPolyline, seg_idx: usize) -> Option<(ArcEnt, bool)> {
+    let n = poly.vertices.len();
+    let v0 = poly.vertices.get(seg_idx)?;
+    let v1 = poly.vertices.get((seg_idx + 1) % n)?;
+    let bulge = crate::entities::common::BulgeArc::from_bulge(
+        [v0.location.x, v0.location.y],
+        [v1.location.x, v1.location.y],
+        v0.bulge,
+    )?;
+    let reversed = bulge.sweep < 0.0;
+    let mut arc = ArcEnt::new();
+    arc.common = poly.common.clone();
+    arc.common.handle = Handle::NULL;
+    arc.center = Vector3::new(bulge.center[0], bulge.center[1], poly.elevation);
+    arc.radius = bulge.radius;
+    let (start, end) = if reversed {
+        (bulge.end_angle, bulge.start_angle)
+    } else {
+        (bulge.start_angle, bulge.end_angle)
+    };
+    arc.start_angle = norm_angle(start);
+    arc.end_angle = norm_angle(end);
+    Some((arc, reversed))
+}
+
+/// The polyline with its bulged segment `seg_idx` replaced by `arc`, the
+/// segment's arc as the fillet cut it back or extended it: both ends of the
+/// segment go to the arc's ends, the bulge follows its new sweep.
+fn rebuild_poly_from_trimmed_arc(
+    poly: &LwPolyline,
+    seg_idx: usize,
+    reversed: bool,
+    arc: &ArcEnt,
+) -> LwPolyline {
+    let n = poly.vertices.len();
+    let mut new_poly = poly.clone();
+    new_poly.common.handle = Handle::NULL;
+    let at = |angle: f64| {
+        (
+            arc.center.x + arc.radius * angle.cos(),
+            arc.center.y + arc.radius * angle.sin(),
+        )
+    };
+    let (first, last) = if reversed {
+        (at(arc.end_angle), at(arc.start_angle))
+    } else {
+        (at(arc.start_angle), at(arc.end_angle))
+    };
+    let sweep = arc_span(arc.start_angle, arc.end_angle);
+    let vertex = &mut new_poly.vertices[seg_idx];
+    vertex.location.x = first.0;
+    vertex.location.y = first.1;
+    vertex.bulge = (sweep / 4.0).tan() * if reversed { -1.0 } else { 1.0 };
+    let end = &mut new_poly.vertices[(seg_idx + 1) % n];
+    end.location.x = last.0;
+    end.location.y = last.1;
+    new_poly
+}
+
 /// Extract a LwPolyline segment as a virtual `LineEnt` (ignores bulge).
 fn lwpoly_seg_as_line(poly: &LwPolyline, seg_idx: usize) -> LineEnt {
     let n = poly.vertices.len();
@@ -827,13 +889,54 @@ fn compute_fillet_entities(
     radius: f64,
 ) -> Option<(EntityType, EntityType, Option<EntityType>)> {
     let z = e1.elevation();
-    // A polyline arc segment would be filleted as its straight chord.
-    let picks_arc_segment = |entity: &FilletEntity| {
-        matches!(entity, FilletEntity::LwPoly { poly, seg_idx, .. }
-            if poly.vertices.get(*seg_idx).is_some_and(|vertex| vertex.bulge.abs() > 1e-12))
-    };
-    if picks_arc_segment(e1) || picks_arc_segment(e2) {
-        return None;
+    // A polyline's arc segment fillets as the arc it draws; the cut-back arc
+    // then goes back into the polyline as its end point and bulge.
+    fn arc_segment(entity: &FilletEntity) -> Option<(&LwPolyline, usize, ArcEnt, bool)> {
+        match entity {
+            FilletEntity::LwPoly { poly, seg_idx, .. }
+                if poly.vertices.get(*seg_idx).is_some_and(|v| v.bulge.abs() > 1e-12) =>
+            {
+                let (arc, reversed) = lwpoly_seg_as_arc(poly, *seg_idx)?;
+                Some((poly, *seg_idx, arc, reversed))
+            }
+            _ => None,
+        }
+    }
+    let (s1, s2) = (arc_segment(e1), arc_segment(e2));
+    if s1.is_some() || s2.is_some() {
+        // Two segments of one polyline round their shared corner elsewhere.
+        if let (
+            FilletEntity::LwPoly { handle: h1, .. },
+            FilletEntity::LwPoly { handle: h2, .. },
+        ) = (e1, e2)
+        {
+            if h1 == h2 {
+                return None;
+            }
+        }
+        let as_arc = |segment: &Option<(&LwPolyline, usize, ArcEnt, bool)>| {
+            segment.as_ref().map(|(_, _, arc, _)| FilletEntity::Arc(arc.clone()))
+        };
+        let (a1, a2) = (as_arc(&s1), as_arc(&s2));
+        let (r1, r2, fillet) = compute_fillet_entities(
+            a1.as_ref().unwrap_or(e1),
+            click1,
+            a2.as_ref().unwrap_or(e2),
+            click2,
+            radius,
+        )?;
+        let back = |segment: &Option<(&LwPolyline, usize, ArcEnt, bool)>, result: EntityType| {
+            match (segment, result) {
+                (Some((poly, seg_idx, _, reversed)), EntityType::Arc(arc)) => Some(
+                    EntityType::LwPolyline(rebuild_poly_from_trimmed_arc(
+                        poly, *seg_idx, *reversed, &arc,
+                    )),
+                ),
+                (None, result) => Some(result),
+                _ => None,
+            }
+        };
+        return Some((back(&s1, r1)?, back(&s2, r2)?, fillet));
     }
     if matches!(e1, FilletEntity::Curve(_)) || matches!(e2, FilletEntity::Curve(_)) {
         return fillet_curves(e1, click1, e2, click2, radius, z);
