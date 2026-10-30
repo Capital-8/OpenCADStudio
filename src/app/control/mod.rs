@@ -2020,7 +2020,7 @@ impl OpenCADStudio {
 }
 mod actions;
 pub(crate) mod vision;
-pub(crate) use actions::property_json;
+pub(crate) use actions::{property_json, row_id};
 mod entities;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod http_bridge;
@@ -2284,6 +2284,26 @@ mod tests {
         assert_eq!(app.automation_op(r#"{"op":"entities"}"#)["total"], 0);
     }
     #[test]
+    fn control_dynamic_text_reads_back_in_every_length_format() {
+        use crate::app::block_parameter_properties::parse_value;
+        use crate::entities::common::{set_unit_context, UnitContext};
+
+        set_unit_context(UnitContext {
+            lunits: 5,
+            luprec: 4,
+            ..Default::default()
+        });
+        assert_eq!(parse_value("5 3/4"), Some(5.75));
+        set_unit_context(UnitContext {
+            lunits: 1,
+            luprec: 2,
+            ..Default::default()
+        });
+        assert!((parse_value("1.25e+06").unwrap() - 1_250_000.).abs() < 1e-6);
+        assert_eq!(parse_value("10+2"), Some(12.0));
+    }
+
+    #[test]
     fn control_property_reads_dynamic_rows_as_scalars_and_sets_them_by_id() {
         use crate::scene::block_actions as actions;
         use crate::scene::block_distance_parameter as distance;
@@ -2397,6 +2417,34 @@ mod tests {
             .and_then(|value| value.parse::<f64>().ok())
             .unwrap();
         assert!((other - 20.0).abs() < 1e-6, "{other}");
+
+        // The text a row prints is accepted back unchanged, even when the
+        // drawing writes lengths as fractions.
+        app.tabs[i].scene.document.header.linear_unit_format = 5;
+        app.tabs[i].scene.document.header.linear_unit_precision = 4;
+        let set = request(
+            &mut app,
+            json!({"op":"property","field":x["id"],"value":5.75}),
+        );
+        assert_eq!(set["ok"], true, "{set}");
+        let printed = rows(&mut app)
+            .iter()
+            .find(|row| row["id"] == x["id"])
+            .and_then(|row| row["value"].as_str())
+            .map(str::to_owned)
+            .unwrap();
+        assert_eq!(printed, "5 3/4");
+        let echoed = request(
+            &mut app,
+            json!({"op":"property","field":x["id"],"value":printed}),
+        );
+        assert_eq!(echoed["ok"], true, "{echoed}");
+        let kept = rows(&mut app)
+            .iter()
+            .find(|row| row["id"] == x["id"])
+            .cloned()
+            .unwrap();
+        assert_eq!(kept["value"], "5 3/4");
     }
 
     #[test]

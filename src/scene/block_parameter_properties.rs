@@ -193,6 +193,11 @@ pub(crate) fn properties(
     document: u64,
     insert: Handle,
 ) -> Vec<Property> {
+    // The rows print with the drawing's LUNITS/LUPREC/AUPREC, so a headless
+    // caller or a non-active tab never formats with another drawing's settings.
+    crate::entities::common::set_unit_context(
+        crate::entities::common::UnitContext::from_header(&doc.header),
+    );
     let Some(definition) = instance::definition(doc, insert) else {
         return vec![];
     };
