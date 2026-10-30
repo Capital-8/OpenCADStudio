@@ -1280,6 +1280,7 @@ impl OpenCADStudio {
                 "entities_transform":true,
                 "file_identity":true,
                 "group_create":true,
+                "node_graph":true,
                 "layout_create":true,
                 "page_setup_set":true,
                 "selection_set_load":true,

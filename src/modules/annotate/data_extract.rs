@@ -14,7 +14,10 @@ pub fn tool() -> ToolDef {
 }
 
 /// -DATAEXTRACTION: asks for a saved extraction's settings file and runs it.
-pub struct TemplateCommand;
+/// A relative path is looked up next to the drawing first.
+pub struct TemplateCommand {
+    pub drawing_dir: Option<std::path::PathBuf>,
+}
 
 impl crate::command::CadCommand for TemplateCommand {
     fn name(&self) -> &'static str {
@@ -31,16 +34,23 @@ impl crate::command::CadCommand for TemplateCommand {
 
     fn on_text_input(&mut self, text: &str) -> Option<crate::command::CmdResult> {
         use crate::command::CmdResult;
-        let path = text.trim().trim_matches('"');
-        if path.is_empty() {
+        let path = std::path::Path::new(text.trim().trim_matches('"'));
+        if path.as_os_str().is_empty() {
             return Some(CmdResult::NeedPoint);
         }
-        if !std::path::Path::new(path).is_file() {
+        let path = match &self.drawing_dir {
+            Some(dir) if path.is_relative() && dir.join(path).is_file() => dir.join(path),
+            _ => path.to_path_buf(),
+        };
+        if !path.is_file() {
             return Some(CmdResult::ReportMeasurement(
                 crate::t!("Invalid name.").into_owned(),
             ));
         }
-        Some(CmdResult::Dispatch(format!("-DATAEXTRACTION _RUN {path}")))
+        Some(CmdResult::Dispatch(format!(
+            "-DATAEXTRACTION _RUN {}",
+            path.display()
+        )))
     }
 
     fn on_point(&mut self, _point: glam::DVec3) -> crate::command::CmdResult {

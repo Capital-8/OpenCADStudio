@@ -17,6 +17,8 @@ pub mod dimbreak;
 pub mod dimedit;
 pub mod dimoverride;
 pub mod dimjogline;
+pub mod dimreassociate;
+pub mod dim_distribute;
 pub mod dimspace;
 pub mod dimtedit;
 pub mod field_cmd;

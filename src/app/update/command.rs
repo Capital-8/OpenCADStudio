@@ -874,20 +874,22 @@ impl OpenCADStudio {
                 .map(|c| c.is_free_text_step())
                 .unwrap_or(false);
             let raw = self.command_line.input.clone();
-            let toks: Vec<String> = raw.split_whitespace().map(String::from).collect();
-            if toks.len() > 1 && !wants_spaces {
-                self.command_line.input.clear();
-                if self.tabs[i].active_cmd.is_some() {
-                    let mut tasks = Vec::new();
-                    for tok in &toks {
-                        if self.tabs[i].active_cmd.is_none() {
-                            break;
+            if !raw.trim().starts_with('(') {
+                let toks: Vec<String> = raw.split_whitespace().map(String::from).collect();
+                if toks.len() > 1 && !wants_spaces {
+                    self.command_line.input.clear();
+                    if self.tabs[i].active_cmd.is_some() {
+                        let mut tasks = Vec::new();
+                        for tok in &toks {
+                            if self.tabs[i].active_cmd.is_none() {
+                                break;
+                            }
+                            tasks.push(self.feed_active_cmd(tok));
                         }
-                        tasks.push(self.feed_active_cmd(tok));
+                        return Task::batch(tasks);
                     }
-                    return Task::batch(tasks);
+                    return self.run_command_line(&raw);
                 }
-                return self.run_command_line(&raw);
             }
         }
         // With the command line empty, a typed dynamic-input value
@@ -907,6 +909,13 @@ impl OpenCADStudio {
                 .map(|c| c.is_free_text_step())
                 .unwrap_or(false);
             let raw = self.command_line.input.trim().to_string();
+            if raw.trim_start_matches('_').eq_ignore_ascii_case("FROM")
+                && self.point_modifier_step(i)
+            {
+                self.command_line.input.clear();
+                self.start_from_modifier(i);
+                return self.focus_cmd_input();
+            }
             let is_mtp = raw.trim_start_matches('_').eq_ignore_ascii_case("MTP")
                 || raw.trim_start_matches('_').eq_ignore_ascii_case("M2P");
             if is_mtp {
@@ -946,6 +955,13 @@ impl OpenCADStudio {
             // still work when dynamic input is off. See #97.
             // Selection keywords (P / L) at a Select objects prompt
             // consume the token before any other interpretation (#426).
+            // A typed window waiting for its opposite corner reads this
+            // entry first, Enter included.
+            if self.typed_window_corner.is_some() {
+                if let Some(task) = self.typed_object_pick(&text) {
+                    return task;
+                }
+            }
             if let Some(task) = self.try_selection_keyword(&text) {
                 return task;
             }
@@ -995,6 +1011,9 @@ impl OpenCADStudio {
                 }
             }
 
+            if let Some(task) = self.typed_object_pick(&text) {
+                return task;
+            }
             if let Some((coord, kind)) = parse_coord(&text) {
                 // Command-line coordinates are absolute by default,
                 // independent of DYN: `@` forces relative, `#` forces
@@ -1004,7 +1023,7 @@ impl OpenCADStudio {
                 // absolute regardless of the DYN setting.)
                 let want_relative = matches!(kind, CoordKind::Relative);
                 let ucs = self.tabs[i].active_ucs.clone();
-                let wcs_pt = match (want_relative, self.last_point) {
+                let wcs_pt = match (want_relative, self.relative_input_base(i)) {
                     (true, Some(base)) => {
                         // Offset from the last point, rotated by the
                         // UCS axes (no origin translation).
@@ -2586,6 +2605,9 @@ impl OpenCADStudio {
                 if let Some(h) = found {
                     self.tabs[i].scene.document.header.current_dimstyle_handle = h;
                     self.tabs[i].scene.document.header.current_dimstyle_name = name;
+                    crate::scene::creation_style::sync_header_dim_vars(
+                        &mut self.tabs[i].scene.document,
+                    );
                 }
             }
             StyleKey::MLeaderStyle => {
@@ -3557,9 +3579,17 @@ impl OpenCADStudio {
                 };
                 // A text taking a style takes what the style fixes: its height
                 // when the style sets one, its width factor and oblique angle.
+                // An annotative style's height is on paper: the text takes it
+                // at the current annotation scale.
                 let text_style = (field == "style")
                     .then(|| self.tabs[i].scene.document.text_styles.get(&value).cloned())
-                    .flatten();
+                    .flatten()
+                    .map(|mut style| {
+                        if style.annotative {
+                            style.height *= self.tabs[i].scene.creation_annotation_multiplier();
+                        }
+                        style
+                    });
                 // A dimension taking a style takes its annotative state, as a
                 // new dimension would. (#1917)
                 let dim_style_annotative = (field == "style_name")

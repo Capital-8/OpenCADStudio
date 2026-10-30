@@ -184,6 +184,12 @@ pub(crate) const DATA_LINK_DICTIONARY: &str = "ACAD_DATALINK";
 pub(crate) const EXCEL_LINK_ADAPTER: &str = "AcExcel";
 /// Data adapter of the links a data extraction table keeps to its settings.
 pub(crate) const EXTRACTION_LINK_ADAPTER: &str = "OpenCADStudio.DataExtraction.DataLinkAdapter";
+
+/// Whether a link adapter is a data extraction one: ours, or the adapter
+/// other extraction tools file their links under (`...DataExtraction.DxDataLinkAdapter`).
+fn is_extraction_adapter(adapter: &str) -> bool {
+    adapter == EXTRACTION_LINK_ADAPTER || adapter.ends_with(".DataExtraction.DxDataLinkAdapter")
+}
 /// Data-link option: keep a cached copy of the source data.
 pub(crate) const LINK_OPTION_PERSIST_CACHE: i32 = 0x1;
 /// Update-option bits.
@@ -311,6 +317,96 @@ pub(crate) fn stamp_data_link(link: &mut DataLink) {
     link.millisecond = elapsed.subsec_millis() as i16;
 }
 
+/// Stamps the last-update time of the link at `handle`.
+pub(crate) fn stamp_data_link_handle(doc: &mut Document, handle: Handle) {
+    if let Some(link) = data_link_mut(doc, handle) {
+        stamp_data_link(link);
+    }
+}
+
+/// DXEVAL: the events that compare extraction tables with their data —
+/// 1 open, 2 save, 4 plot, 8 publish, 16 eTransmit/archive — and 32 save,
+/// 64 plot, 128 publish, 256 eTransmit/archive updating them without
+/// asking. Kept in the drawing; 12 (plot and publish) until set.
+pub(crate) fn dxeval(doc: &Document) -> i32 {
+    crate::io::drawing_variable(doc, "DXEVAL")
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(12)
+}
+
+/// An extraction table whose data no longer matches the drawing.
+#[derive(Debug, Clone)]
+pub(crate) struct OutdatedExtraction {
+    pub table: Handle,
+    pub link: Handle,
+    /// The settings file the extraction runs from.
+    pub settings: String,
+    /// What the table shows once updated: its title over the new data.
+    pub rows: Vec<Vec<String>>,
+}
+
+/// The rows an extraction table shows from its data now, under its title
+/// row; `None` when `link` is not an extraction link.
+pub(crate) fn extraction_table_rows(
+    doc: &Document,
+    doc_path: Option<&Path>,
+    table: Handle,
+    link: Handle,
+) -> Option<Result<Vec<Vec<String>>, String>> {
+    let settings = extraction_link_settings(doc, link)?;
+    Some(rerun_extraction(doc, doc_path, &settings).map(|rows| {
+        let title = match doc.get_entity(table) {
+            Some(EntityType::Table(table)) => table.cell_text(0, 0).unwrap_or_default().to_string(),
+            _ => String::new(),
+        };
+        std::iter::once(vec![title]).chain(rows).collect()
+    }))
+}
+
+/// The extraction tables of the drawing whose cells differ from what their
+/// extraction gives now.
+pub(crate) fn outdated_extraction_tables(
+    doc: &Document,
+    doc_path: Option<&Path>,
+) -> Vec<OutdatedExtraction> {
+    let mut outdated = Vec::new();
+    for entity in doc.entities() {
+        let EntityType::Table(table) = entity else {
+            continue;
+        };
+        let Some(link) = table
+            .rows
+            .iter()
+            .flat_map(|row| row.cells.iter())
+            .find_map(|cell| cell.data_link_handle)
+        else {
+            continue;
+        };
+        let handle = entity.common().handle;
+        let Some(Ok(rows)) = extraction_table_rows(doc, doc_path, handle, link) else {
+            continue;
+        };
+        let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
+        let current = table.row_count() == rows.len()
+            && table.column_count() == columns
+            && rows.iter().enumerate().all(|(r, values)| {
+                (0..columns).all(|c| {
+                    table.cell_text(r, c).unwrap_or_default()
+                        == values.get(c).map(String::as_str).unwrap_or("")
+                })
+            });
+        if !current {
+            outdated.push(OutdatedExtraction {
+                table: handle,
+                link,
+                settings: extraction_link_settings(doc, link).unwrap_or_default(),
+                rows,
+            });
+        }
+    }
+    outdated
+}
+
 /// Renames a link (filing it in the dictionary when it was outside it).
 fn rename_data_link(doc: &mut Document, handle: Handle, name: &str) {
     put_data_link_entry(doc, handle, name);
@@ -373,7 +469,7 @@ fn resolve_link_path(doc: &Document, link: &DataLink) -> PathBuf {
 
 /// What a link takes from its source, as the manager describes it.
 fn link_details(doc: &Document, link: &DataLink) -> String {
-    if link.data_adapter == EXTRACTION_LINK_ADAPTER {
+    if is_extraction_adapter(&link.data_adapter) {
         return crate::t!("Data extraction settings").into_owned();
     }
     let (sheet, kind, range) = link_selection(doc, link);
@@ -829,7 +925,7 @@ pub(crate) fn add_extraction_link(doc: &mut Document, settings: &str) -> Handle 
 /// The settings file of a data extraction link.
 pub(crate) fn extraction_link_settings(doc: &Document, handle: Handle) -> Option<String> {
     data_link(doc, handle)
-        .filter(|link| link.data_adapter == EXTRACTION_LINK_ADAPTER)
+        .filter(|link| is_extraction_adapter(&link.data_adapter))
         .map(|link| link.connection_string.clone())
 }
 
@@ -880,13 +976,27 @@ pub(crate) fn data_link_write_path(doc: &Document, handle: Handle) -> Result<Pat
 }
 
 /// The objects the extraction reads from a drawing: model space objects
-/// other than block definitions' own markers.
+/// other than block definitions' own markers and the drawing of a table,
+/// dimension or other object kept in an anonymous block (a table is one
+/// object, not its lines and texts).
 fn extraction_entities<'a>(
     doc: &'a Document,
     allowed_handles: Option<&'a BTreeSet<Handle>>,
 ) -> impl Iterator<Item = &'a EntityType> + 'a {
+    let anonymous: BTreeSet<Handle> = doc
+        .block_records
+        .iter()
+        .filter(|record| {
+            let name = record.name.to_ascii_lowercase();
+            name.starts_with('*')
+                && !name.starts_with("*model_space")
+                && !name.starts_with("*paper_space")
+        })
+        .map(|record| record.handle)
+        .collect();
     doc.entities().filter(move |entity| {
         !matches!(entity, EntityType::Block(_) | EntityType::BlockEnd(_))
+            && !anonymous.contains(&entity.common().owner_handle)
             && allowed_handles.is_none_or(|handles| handles.contains(&entity.common().handle))
     })
 }
@@ -1413,8 +1523,12 @@ fn save_extraction_settings(state: &DataExtractionState) -> Result<(), String> {
 
 fn load_extraction_settings(state: &mut DataExtractionState) -> Result<(), String> {
     let text = read_text_source(Path::new(state.settings_path.trim()))?;
-    let value: serde_json::Value =
-        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|error| error.to_string())?;
+    if value["drawingDataExtractor"].is_object() {
+        load_extractor_settings(state, &value);
+        return Ok(());
+    }
     state.source = match value["source"].as_str() {
         Some("currentSelection") => ExtractionSource::CurrentSelection,
         Some("currentDrawing") => ExtractionSource::CurrentDrawing,
@@ -1471,6 +1585,72 @@ fn load_extraction_settings(state: &mut DataExtractionState) -> Result<(), Strin
     state.attributed_blocks_only = flag("attributedBlocksOnly", state.attributed_blocks_only);
     state.in_use_only = flag("inUseOnly", state.in_use_only);
     Ok(())
+}
+
+/// Settings in the layout other extraction tools write: the source files
+/// under `drawingDataExtractor.settings.fileList`, the object types and the
+/// report's columns (`strGlobalName`, the same keys these settings use;
+/// flag 16 marks a hidden column), and the table output.
+fn load_extractor_settings(state: &mut DataExtractionState, value: &serde_json::Value) {
+    let settings = &value["drawingDataExtractor"]["settings"];
+    let files = &settings["fileList"];
+    let paths = |key: &str| {
+        files[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry["absolute"].as_str().or_else(|| entry.as_str()))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    state.source_files = paths("files").into_iter().chain(paths("folders")).collect();
+    state.include_current = files["currentFile"].is_object();
+    state.source = if state.source_files.is_empty() {
+        ExtractionSource::CurrentDrawing
+    } else {
+        ExtractionSource::DrawingsAndFolders
+    };
+    state.saved_objects = Some(
+        settings["selectedTypesAndProperties"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|kind| kind["displayName"].as_str().map(str::to_string))
+            .collect(),
+    );
+    let report = &value["report"];
+    let columns: Vec<&str> = report["ColLists"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|column| column["flags"].as_i64().unwrap_or(0) & 16 == 0)
+        .filter_map(|column| column["strGlobalName"].as_str())
+        .collect();
+    state.show_count = columns.contains(&"AcDxCount");
+    state.show_name = columns.contains(&"AcDxObjectTypeName");
+    state.saved_properties = Some(
+        columns
+            .into_iter()
+            .filter(|key| !matches!(*key, "AcDxCount" | "AcDxObjectTypeName"))
+            .map(str::to_string)
+            .collect(),
+    );
+    if let Some(combine) = report["bInAggregateMode"].as_bool() {
+        state.combine_identical = combine;
+    }
+    let output = &value["outputSettings"];
+    let text_of = |key: &str, current: &str| output[key].as_str().unwrap_or(current).to_string();
+    state.output_path = text_of("fileName", &state.output_path);
+    state.output_file = !state.output_path.trim().is_empty();
+    state.output_table = output["ouputFlags"].as_i64().map_or(state.output_table, |f| f & 2 != 0);
+    state.table_style = text_of("tableStyleName", &state.table_style);
+    state.table_title = text_of("tableTitle", &state.table_title);
+    state.title_cell_style = text_of("titleCellStyle", &state.title_cell_style);
+    state.header_cell_style = text_of("headerCellStyle", &state.header_cell_style);
+    state.data_cell_style = text_of("dataCellStyle", &state.data_cell_style);
+    if let Some(headers) = output["usePropertyNameAsColumnHeader"].as_bool() {
+        state.property_headers = headers;
+    }
 }
 
 impl OpenCADStudio {
@@ -1611,7 +1791,16 @@ impl OpenCADStudio {
             }
         };
         if state.output_file && !state.output_path.trim().is_empty() {
-            let file = PathBuf::from(state.output_path.trim());
+            // A relative output file goes next to the drawing.
+            let mut file = PathBuf::from(state.output_path.trim());
+            if let Some(dir) = self.tabs[i]
+                .current_path
+                .as_deref()
+                .and_then(std::path::Path::parent)
+                .filter(|_| file.is_relative())
+            {
+                file = dir.join(file);
+            }
             match write_extraction_file(&file, &rows) {
                 Ok(()) => self.command_line.push_output(
                     crate::tf!(
@@ -2692,36 +2881,68 @@ impl OpenCADStudio {
             rows.iter().skip(1).cloned().collect()
         };
         let columns = body.iter().map(Vec::len).max().unwrap_or(1).max(1);
-        // Rows are a line and a third of their text high plus both margins
-        // (measured: 4.5 text with 1.5 margins -> 9, the 6 title -> 11).
-        let (text_heights, margin, row_heights) = match style {
+        // Title, header and data rows each use their own text style and height.
+        let (text_heights, fonts, margins) = match style {
             Some((_, table_style)) => {
-                let heights = [
-                    table_style.title_row_style.text_height.max(1.0e-6),
-                    table_style.header_row_style.text_height.max(1.0e-6),
-                    table_style.data_row_style.text_height.max(1.0e-6),
+                let rows = [
+                    &table_style.title_row_style,
+                    &table_style.header_row_style,
+                    &table_style.data_row_style,
                 ];
-                let row = |h: f64| h * 4.0 / 3.0 + 2.0 * table_style.vertical_margin;
                 (
-                    heights,
-                    table_style.horizontal_margin,
-                    [row(heights[0]), row(heights[1]), row(heights[2])],
+                    rows.map(|row| row.text_height.max(1.0e-6)),
+                    rows.map(|row| {
+                        crate::entities::text_support::resolve_text_style(
+                            &row.text_style_name,
+                            doc,
+                        )
+                        .font_name
+                    }),
+                    (table_style.horizontal_margin, table_style.vertical_margin),
                 )
             }
-            None => ([0.25, 0.25, 0.18], 0.06, [0.5, 0.5, 0.5]),
+            None => {
+                let font =
+                    crate::entities::text_support::resolve_text_style("Standard", doc).font_name;
+                ([0.25, 0.25, 0.18], [font.clone(), font.clone(), font], (0.06, 0.06))
+            }
         };
-        let font = crate::entities::text_support::resolve_text_style(
-            style.map_or("Standard", |(_, s)| s.data_row_style.text_style_name.as_str()),
-            doc,
-        )
-        .font_name;
+        // A text's extent: from the left of its ink or pen origin to the right
+        // of its ink or pen advance, and the height of its ink.
+        let extent = |text: &str, slot: usize| -> Option<(f64, f64)> {
+            let bounds = crate::entities::text_support::text_local_bounds(
+                &fonts[slot],
+                text,
+                text_heights[slot] as f32,
+                1.0,
+                0.0,
+            )?;
+            let width = bounds.advance.max(bounds.ink_max[0]) - bounds.ink_min[0].min(0.0);
+            let height = (bounds.ink_max[1] - bounds.ink_min[1]).max(0.0);
+            Some((f64::from(width), f64::from(height)))
+        };
+        let header = usize::from(state.property_headers);
+        let slot_of = |row_index: usize| if row_index < header { 1 } else { 2 };
+        // A row is as high as its tallest text ink, but at least a line and a
+        // third of its text height, plus both vertical margins (measured:
+        // Arial 4 -> 6.333 with 0.5 margins; Times 3 -> 5.034 / 5.032 by the
+        // row's own letters; empty title row -> a line and a third).
+        let row_height = |slot: usize, texts: &[String]| {
+            let ink = texts
+                .iter()
+                .filter_map(|text| extent(text, slot))
+                .map(|(_, height)| height)
+                .fold(0.0_f64, f64::max);
+            ink.max(text_heights[slot] * 4.0 / 3.0) + 2.0 * margins.1
+        };
         let mut table = TableBuilder::new(body.len() + 1, columns)
             .at(Vector3::new(0.0, 0.0, 0.0))
-            .row_height(row_heights[2])
+            .row_height(row_height(2, &[]))
             .column_width(2.0)
             .build();
         table.table_style_handle = style.map(|(handle, _)| handle);
-        table.set_cell_text(0, 0, state.table_title.trim());
+        let title = state.table_title.trim().to_string();
+        table.set_cell_text(0, 0, &title);
         if columns > 1 {
             table.merge_cells(CellRange::new(0, 0, 0, columns - 1));
         }
@@ -2730,30 +2951,35 @@ impl OpenCADStudio {
                 table.set_cell_text(row_index + 1, column_index, value);
             }
         }
-        // A column is as wide as its widest text, both margins and one more
-        // text height (measured: every column 4.5 wider than text + margins
-        // at 4.5 text with 1.5 margins).
-        let header = usize::from(state.property_headers);
+        // A column is as wide as its widest text (header included) and five
+        // horizontal cell margins (measured with Arial, Times, txt and simplex
+        // at text heights 2.5 to 5 and margins 0.5 to 2.5: exact to 1e-4).
         for (column_index, column) in table.columns.iter_mut().enumerate() {
             let widest = body
                 .iter()
                 .enumerate()
                 .filter_map(|(row_index, row)| {
-                    let height = text_heights[if row_index < header { 1 } else { 2 }];
-                    row.get(column_index).map(|value| (value, height))
+                    row.get(column_index)
+                        .and_then(|value| extent(value, slot_of(row_index)))
                 })
-                .filter_map(|(value, height)| {
-                    crate::entities::text_support::text_local_bounds(
-                        &font,
-                        value,
-                        height as f32,
-                        1.0,
-                        0.0,
-                    )
-                })
-                .map(|bounds| f64::from(bounds.advance))
+                .map(|(width, _)| width)
                 .fold(0.0_f64, f64::max);
-            column.width = widest + text_heights[2] + 2.0 * margin;
+            column.width = widest + 5.0 * margins.0;
+        }
+        let title_texts: &[String] = if title.is_empty() {
+            &[]
+        } else {
+            std::slice::from_ref(&title)
+        };
+        let heights: Vec<f64> = std::iter::once(row_height(0, title_texts))
+            .chain(
+                body.iter()
+                    .enumerate()
+                    .map(|(row_index, row)| row_height(slot_of(row_index), row)),
+            )
+            .collect();
+        for (row, height) in table.rows.iter_mut().zip(&heights) {
+            row.height = *height;
         }
         if let Some((_, table_style)) = style {
             let names = [
@@ -2771,7 +2997,6 @@ impl OpenCADStudio {
                     table_style,
                     names[slot],
                 ));
-                row.height = row_heights[slot];
             }
         }
         table

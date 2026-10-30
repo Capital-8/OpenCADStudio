@@ -49,6 +49,9 @@ pub fn ensure_iso_dim_style(doc: &mut Document) -> Handle {
     }
     let mut style = DimStyle::new("ISO-25");
     style.handle = doc.allocate_handle();
+    // Separate arrowheads off, as in the reference's ISO-25: DIMBLK draws
+    // both ends.
+    style.dimsah = false;
     style.dimtxt = 2.5;
     style.dimasz = 2.5;
     style.dimcen = 2.5;
@@ -179,8 +182,13 @@ fn apply_text_defaults(doc: &Document, entity: &mut EntityType) {
     if style_name.trim().is_empty() {
         style_name.clone_from(&active.style_name);
     }
-    let resolved =
+    let mut resolved =
         named_text_style(doc, style_name).unwrap_or_else(|| TextStyle::new(style_name.clone()));
+    // An annotative style's height is on paper; the creating command already
+    // gave the entity its model height at the current annotation scale.
+    if resolved.annotative {
+        resolved.height = 0.0;
+    }
     match entity {
         EntityType::Text(text) => {
             if resolved.height > 1.0e-9 {
@@ -316,6 +324,61 @@ fn apply_object_defaults(doc: &Document, entity: &mut EntityType) {
             }
         }
         _ => {}
+    }
+}
+
+/// The drawing's DIMDLI takes the current dimension style's value, as
+/// making a style current does; DIM's Offset changes it afterwards.
+pub fn sync_header_dim_vars(doc: &mut Document) {
+    let current = doc.header.current_dimstyle_name.clone();
+    let value = doc
+        .dim_styles
+        .iter()
+        .find(|style| style.name.eq_ignore_ascii_case(&current))
+        .map(|style| style.dimdli);
+    if let Some(value) = value {
+        doc.header.dim_line_increment = value;
+    }
+}
+
+/// The drawing's DIMDLI (the header's; the current style's when the header
+/// has none).
+pub fn drawing_dimdli(doc: &Document) -> f64 {
+    let header = doc.header.dim_line_increment;
+    if header > 0.0 {
+        return header;
+    }
+    let current = &doc.header.current_dimstyle_name;
+    doc.dim_styles
+        .iter()
+        .find(|style| style.name.eq_ignore_ascii_case(current))
+        .map_or(header, |style| style.dimdli)
+}
+
+/// A DIMDLI set for the drawing that differs from the current dimension
+/// style goes on a new dimension as an override. Written before the
+/// dimension is committed, so the override is part of the added object and
+/// its undo step.
+pub fn apply_drawing_dimdli(doc: &Document, entity: &mut EntityType) {
+    if !matches!(entity, EntityType::Dimension(_)) {
+        return;
+    }
+    let current = &doc.header.current_dimstyle_name;
+    let Some(style_value) = doc
+        .dim_styles
+        .iter()
+        .find(|style| style.name.eq_ignore_ascii_case(current))
+        .map(|style| style.dimdli)
+    else {
+        return;
+    };
+    let drawing = drawing_dimdli(doc);
+    if (drawing - style_value).abs() > 1.0e-9 {
+        crate::entities::dim_override::set_on_entity(
+            entity,
+            crate::entities::dim_override::DIMDLI,
+            Some(codec::xdata::XDataValue::Real(drawing)),
+        );
     }
 }
 

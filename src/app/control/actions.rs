@@ -41,7 +41,7 @@ fn control_lineweight(value: &Value) -> Result<codec::types::LineWeight, Value> 
 }
 
 fn color_value(color: codec::types::Color) -> Value {
-    if let Some((r, g, b)) = color.rgb() {
+    if let Some((r, g, b)) = color.true_color_rgb() {
         json!({"rgb":[r,g,b]})
     } else {
         json!(color.index())
@@ -58,7 +58,10 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
         PropValue::EditText(v) => ("number", json!(v), Value::Null),
         PropValue::PlainText(v) => ("text", json!(v), Value::Null),
         PropValue::Hyperlink(v) => ("hyperlink", json!(v), Value::Null),
-        PropValue::Choice { selected, options } => ("choice", json!(selected), json!(options)),
+        PropValue::Choice { selected, options }
+        | PropValue::ChoiceWithTooltip {
+            selected, options, ..
+        } => ("choice", json!(selected), json!(options)),
         PropValue::EditChoice { value, options } => {
             ("editable_choice", json!(value), json!(options))
         }
@@ -94,6 +97,7 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
 }
 pub(super) const NAMES: &[&str] = &[
     "close_modal",
+    "recovery_accept",
     "conversion_loss_save_anyway",
     "conversion_loss_back",
     // Native-only: the "changed outside" dialog does not exist in the web
@@ -117,6 +121,8 @@ pub(super) const NAMES: &[&str] = &[
     "tds_import_dialog",
     "tds_material_dialog",
     "tds_map_dialog",
+    "extraction_outdated",
+    "print_all",
     "data_link_manager",
     "data_extraction",
     "refedit_dialog",
@@ -324,17 +330,6 @@ impl OpenCADStudio {
             self.push_undo_snapshot(i, "IMAGEATTACH");
             let handle = {
                 let document = &mut self.tabs[i].scene.document;
-                let definition_handle = document.allocate_handle();
-                let mut definition = codec::objects::ImageDefinition::with_dimensions(
-                    path,
-                    image.pixel_width,
-                    image.pixel_height,
-                );
-                definition.handle = definition_handle;
-                document.objects.insert(
-                    definition_handle,
-                    codec::objects::ObjectType::ImageDefinition(definition),
-                );
                 let mut entity = codec::entities::RasterImage::with_size(
                     path,
                     final_at,
@@ -343,7 +338,6 @@ impl OpenCADStudio {
                     final_width,
                     height,
                 );
-                entity.definition_handle = Some(definition_handle);
                 if let Some(l_name) = layer_name {
                     entity.common.layer = l_name.to_string();
                     if !document.layers.contains(l_name) {
@@ -359,9 +353,13 @@ impl OpenCADStudio {
                         }
                     }
                 }
-                document
-                    .add_entity(codec::EntityType::RasterImage(entity))
-                    .map_err(|e| failure("embed_failed", e))?
+                let handle = self.tabs[i]
+                    .scene
+                    .add_entity(codec::EntityType::RasterImage(entity));
+                if handle.is_null() {
+                    return Err(failure("embed_failed", "Could not add image"));
+                }
+                handle
             };
             self.tabs[i].scene.populate_images_from_document();
             if layer_name.is_some() {
@@ -1245,7 +1243,7 @@ impl OpenCADStudio {
                 let commit = self.update(Message::PropGeomCommit(p.field));
                 Task::batch([input, commit])
             }
-            PropValue::Choice { options, .. } => {
+            PropValue::Choice { options, .. } | PropValue::ChoiceWithTooltip { options, .. } => {
                 if !options.contains(&value) {
                     return Err(failure(
                         "invalid_choice",
@@ -1329,8 +1327,16 @@ impl OpenCADStudio {
     }
     pub(super) fn control_ui_action(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         let name = string(req, "name")?;
+        // Without a prompt there is no failed open to retry.
+        if name == "recovery_accept"
+            && self.active_modal != Some(crate::app::ModalKind::RecoveryPrompt)
+        {
+            return Ok(Task::none());
+        }
         let msg = match name {
             "close_modal" => Message::CloseModal,
+            // The recovery prompt's Recover button; `close_modal` declines.
+            "recovery_accept" => Message::RecoveryAttempt,
             // The conversion-loss warning's choices: save with the losses it
             // lists, or drop the held-back save.
             "conversion_loss_save_anyway" => Message::ConversionLossProceed,
@@ -2760,6 +2766,45 @@ impl OpenCADStudio {
             }
             // The missing texture map window of a 3D Studio import: "ok"
             // (or "close") dismisses the shown map; the next one follows.
+            // The outdated extraction table window: "update", "update_all",
+            // "skip", "skip_all" or "close".
+            "extraction_outdated" => {
+                use crate::ui::window::extraction_outdated::OutdatedChoice as C;
+                if self.active_modal != Some(crate::app::ModalKind::ExtractionOutdated) {
+                    return Err(failure(
+                        "no_dialog",
+                        "The outdated extraction table window is not open",
+                    ));
+                }
+                let spec = string(req, "value")?;
+                match spec {
+                    "update" => Message::ExtractionOutdated(C::Update),
+                    "update_all" => Message::ExtractionOutdated(C::UpdateAll),
+                    "skip" => Message::ExtractionOutdated(C::Skip),
+                    "skip_all" => Message::ExtractionOutdated(C::SkipAll),
+                    "close" => Message::CloseModal,
+                    _ => return Err(failure("invalid_value", spec)),
+                }
+            }
+            // The Print All (PUBLISH) window: "open", "pdf=<path>" (the PDF
+            // button with its file already picked), "print" or "close". Both
+            // outputs run the DXEVAL publish check first.
+            "print_all" => {
+                let spec = string(req, "value")?;
+                let open = self.active_modal == Some(crate::app::ModalKind::PrintAll);
+                match spec.split_once('=') {
+                    _ if spec == "open" => Message::PrintAllOpen,
+                    _ if !open => {
+                        return Err(failure("no_dialog", "The Print All window is not open"));
+                    }
+                    Some(("pdf", path)) if !path.is_empty() => {
+                        Message::PrintAllPdfTo(std::path::PathBuf::from(path))
+                    }
+                    _ if spec == "print" => Message::PrintAllPrint,
+                    _ if spec == "close" => Message::CloseModal,
+                    _ => return Err(failure("invalid_value", spec)),
+                }
+            }
             "tds_map_dialog" => {
                 if self.active_modal != Some(crate::app::ModalKind::TdsMissingMap) {
                     return Err(failure("no_dialog", "The missing texture map window is not open"));

@@ -4724,7 +4724,7 @@ pub struct ExtendCommand {
     /// Cached live box preview; rebuilding extensions on every raw pointer
     /// event can stall large drawings. Final commit always recalculates.
     box_preview_wires: Vec<WireModel>,
-    box_preview_at: Option<std::time::Instant>,
+    box_preview_at: Option<iced::time::Instant>,
 }
 
 impl ExtendCommand {
@@ -5024,7 +5024,7 @@ impl CadCommand for ExtendCommand {
             }
         }
         self.box_preview_wires = preview;
-        self.box_preview_at = Some(std::time::Instant::now());
+        self.box_preview_at = Some(iced::time::Instant::now());
         Some(self.box_preview_wires.clone())
     }
 

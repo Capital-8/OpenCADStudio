@@ -62,6 +62,8 @@ enum Step {
     Start,
     Justification,
     Style,
+    /// Style's `?`: which styles to list.
+    StyleList,
     Height,
     Rotation,
     SecondPoint,
@@ -149,10 +151,19 @@ impl TextCommand {
     }
 
     /// TEXT's `?` at the style name: every style with its font and settings.
-    fn style_listing(&self) -> String {
+    fn style_listing(&self, pattern: &str) -> String {
         let mut out = vec![crate::tr!("text-cmd", "styles-title")];
-        let width = self.styles.iter().map(|s| s.name.chars().count() + 2).max().unwrap_or(0);
-        for style in &self.styles {
+        let listed: Vec<&TextStyle> = self
+            .styles
+            .iter()
+            .filter(|style| {
+                pattern
+                    .split(',')
+                    .any(|part| crate::io::xref_model::wildcard_match(&style.name, part.trim()))
+            })
+            .collect();
+        let width = listed.iter().map(|s| s.name.chars().count() + 2).max().unwrap_or(0);
+        for style in listed {
             let name = format!("\"{}\"", style.name);
             let font = if style.true_type_font.trim().is_empty() {
                 let file = style.font_file.trim();
@@ -361,6 +372,7 @@ impl CadCommand for TextCommand {
             }
             Step::Justification => crate::tr!("text-cmd", "justify"),
             Step::Style => crate::tr!("text-cmd", "style", default = self.style_name.clone()),
+            Step::StyleList => crate::tr!("text-cmd", "style-list"),
             Step::Height if self.annotative => {
                 crate::tf!("Specify paper text height <{}>:", length4(self.height)).into_owned()
             }
@@ -418,7 +430,7 @@ impl CadCommand for TextCommand {
     fn wants_text_input(&self) -> bool {
         matches!(
             self.step,
-            Step::Justification | Step::Style | Step::Height | Step::Rotation
+            Step::Justification | Step::Style | Step::StyleList | Step::Height | Step::Rotation
         )
     }
 
@@ -446,7 +458,8 @@ impl CadCommand for TextCommand {
             }
             Step::Style => {
                 if upper == "?" {
-                    return Some(CmdResult::ReportMeasurement(self.style_listing()));
+                    self.step = Step::StyleList;
+                    return Some(CmdResult::NeedPoint);
                 }
                 if !self.select_style(token) {
                     return Some(CmdResult::ReportError(crate::tr!(
@@ -457,8 +470,18 @@ impl CadCommand for TextCommand {
                 }
                 self.step = Step::Start;
             }
+            // The listing ends the Style option.
+            Step::StyleList => {
+                let pattern = if token.is_empty() { "*" } else { token };
+                self.step = Step::Start;
+                return Some(CmdResult::ReportMeasurement(self.style_listing(pattern)));
+            }
             Step::Height => {
-                let value = token.replace(',', ".").parse::<f64>().ok()?;
+                let Ok(value) = token.replace(',', ".").parse::<f64>() else {
+                    return Some(CmdResult::ReportError(
+                        crate::t!("Requires numeric distance or second point.").into_owned(),
+                    ));
+                };
                 if !value.is_finite() || value <= 1.0e-9 {
                     return Some(CmdResult::ReportError(crate::tr!("text-cmd", "positive")));
                 }
@@ -536,7 +559,7 @@ impl CadCommand for TextCommand {
                 self.second_point = Some(point);
                 self.after_second_point()
             }
-            Step::Justification | Step::Style => CmdResult::NeedPoint,
+            Step::Justification | Step::Style | Step::StyleList => CmdResult::NeedPoint,
         }
     }
 
@@ -551,6 +574,10 @@ impl CadCommand for TextCommand {
                 None => CmdResult::Cancel,
             },
             Step::Start => CmdResult::NeedPoint,
+            Step::StyleList => {
+                self.step = Step::Start;
+                CmdResult::ReportMeasurement(self.style_listing("*"))
+            }
             Step::Justification | Step::Style => {
                 self.step = Step::Start;
                 CmdResult::NeedPoint

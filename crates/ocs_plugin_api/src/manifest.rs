@@ -60,9 +60,11 @@
 /// pairs), and record walks batch (`read_xrecords` / `update_xrecords` /
 /// `list_xrecords_with_entries` — one frame per pass, not per record).
 ///
-/// **API v14** (additive — one step over v13; the branch's arc layers were
-/// squashed into it, and the envelopes reshaped IN PLACE before release —
-/// api_version stays 14): `stage_parametric_chain` — a declared alignment
+/// **API v14** (the newest painted release; two arcs landed in it: the
+/// runner's self-driving export — no Rust type crosses the library
+/// boundary — and the parametric/class envelopes being reshaped IN PLACE
+/// before release; api_version stays 14): `stage_parametric_chain` — a
+/// declared alignment
 /// chain whose driving ramps are declared DATA (the vocabulary any record
 /// model restates its laws with) turns into reference-only display
 /// geometry staged by the host (exact Line/Arc carriers for the constant
@@ -130,6 +132,10 @@
 /// plugin's settle callback stays the ONE write window (records first,
 /// then the re-stage; exactly one labeled undo step). Unserved declarations
 /// fall back to the v12 streaming path with one headline.
+/// v14: the plugin runs the runner loop itself through `ocs_plugin_run`
+/// (emitted by `export_plugin!`), so no Rust type crosses the library
+/// boundary. The host no longer matches the plugin's compiler or codec commit;
+/// it matches the codec types' wire shapes (`version_info::wire_schema`).
 pub const API_VERSION: u32 = 14;
 
 /// Oldest plugin API major the current host still loads. This keeps previously

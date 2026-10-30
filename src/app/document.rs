@@ -18,6 +18,25 @@ use std::sync::Arc;
 
 static NEXT_DOCUMENT_TAB_ID: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum LayisoMode {
+    Off,
+    LockAndFade,
+}
+
+#[derive(Clone)]
+pub(super) struct LayisoLayerSnapshot {
+    pub(super) name: String,
+    pub(super) before: codec::tables::Layer,
+    pub(super) after: codec::tables::Layer,
+}
+
+#[derive(Clone)]
+pub(super) struct LayisoState {
+    pub(super) mode: LayisoMode,
+    pub(super) layers: Vec<LayisoLayerSnapshot>,
+}
+
 // ── Dynamic input ──────────────────────────────────────────────────────────
 
 /// One quantity shown in the dynamic-input overlay near the cursor.
@@ -177,9 +196,11 @@ pub(super) struct DocumentTab {
     pub(super) measurement: super::measurement::MeasurementDisplay,
     /// Remaining command tokens queued behind a PAUSE (or `\`) awaiting user interaction.
     pub(super) pending_pause_tokens: Option<Vec<String>>,
-    /// Layers the last LAYISO turned off, so LAYUNISO turns back on exactly
-    /// those and leaves layers that were already off alone (#2021).
-    pub(super) layiso_turned_off: Option<Vec<String>>,
+    /// The last LAYISO state for this drawing. It is intentionally kept on the
+    /// tab rather than globally, so LAYUNISO never crosses drawing tabs.
+    pub(super) layiso_state: Option<LayisoState>,
+    /// The mode used by the next LAYISO command. AutoCAD defaults to Off.
+    pub(super) layiso_mode: LayisoMode,
     /// The selection set the most recent command worked on, captured when a
     /// finishing command drops the live selection — re-selectable with the
     /// "Previous" keyword at any Select objects prompt (#426).
@@ -767,7 +788,8 @@ impl DocumentTab {
             pending_action_pair: None,
             measurement: super::measurement::MeasurementDisplay::default(),
             pending_pause_tokens: None,
-            layiso_turned_off: None,
+            layiso_state: None,
+            layiso_mode: LayisoMode::Off,
             last_cmd: None,
             last_draw_anchor: None,
             snap_result: None,
@@ -991,6 +1013,9 @@ pub(super) struct DeltaSnapshot {
     pub(super) dirty_before: bool,
     pub(super) dirty_after: bool,
     pub(super) active_layer: Option<(String, String)>,
+    /// LAYISO state changed by this history entry, if any. Other commands leave
+    /// the isolation state untouched, so their history entries keep this None.
+    pub(super) layiso_state: Option<(Option<LayisoState>, Option<LayisoState>)>,
     /// Opposite non-entity document state. `apply_delta_state` swaps this with
     /// the live structure, so the same allocation shuttles between undo/redo.
     pub(super) structure: Option<StructureSnapshot>,
@@ -1127,4 +1152,7 @@ pub(super) struct PendingHistorySnapshot {
     pub(super) plugin_owned: bool,
     /// Kept as an undo step even when nothing changed.
     pub(super) keep_empty: bool,
+    /// A plugin's undo group: message boundaries leave it open until the
+    /// plugin ends it or the user runs a command.
+    pub(super) held: bool,
 }

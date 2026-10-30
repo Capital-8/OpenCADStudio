@@ -1227,6 +1227,51 @@ fn trailing_letter_gap(atom: &LayoutAtom, entity_h: f32, base_wf: f32, base_font
     })
 }
 
+/// The side bearings a TrueType line drops at its ends: the first glyph's
+/// left bearing and the last glyph's right bearing. An MTEXT line spans its
+/// ink (measured: the box of an `o` runs from bowl to bowl, and a centred or
+/// right-aligned line puts that ink on the anchor), so positive bearings are
+/// dropped; negative ones and stroke fonts keep their pen extent.
+fn side_bearing(
+    atom: &LayoutAtom,
+    entity_h: f32,
+    base_wf: f32,
+    base_font: &str,
+    trailing: bool,
+) -> f32 {
+    let AtomKind::Word(text) = &atom.kind else {
+        return 0.0;
+    };
+    let font_name = resolve_font(&atom.state, base_font);
+    let face = Face::resolve(&font_name);
+    if face.ttf_family().is_none() {
+        return 0.0;
+    }
+    let mut chars = text.chars().filter(|c| *c != LRM);
+    let ch = if trailing { chars.last() } else { chars.next() };
+    let Some(glyph) = ch.and_then(|c| face.glyph(c)) else {
+        return 0.0;
+    };
+    let xs = || {
+        glyph
+            .strokes
+            .iter()
+            .flatten()
+            .chain(glyph.fill_tris.iter())
+            .map(|point| point[0])
+    };
+    let bearing = if trailing {
+        glyph.advance - xs().fold(f32::NEG_INFINITY, f32::max)
+    } else {
+        xs().fold(f32::INFINITY, f32::min)
+    };
+    if bearing.is_finite() && bearing > 0.0 {
+        bearing * run_scale(&atom.state, entity_h, base_wf)
+    } else {
+        0.0
+    }
+}
+
 pub fn measure_space(state: &RunState, entity_h: f32, base_wf: f32, base_font: &str) -> f32 {
     let scale = run_scale(state, entity_h, base_wf);
     let font_name = resolve_font(state, base_font);
@@ -1383,6 +1428,14 @@ pub fn line_total_width(
         }
     }
     x - line_start_x
+}
+
+/// A run's inline colour index, when it has one.
+fn inline_aci(state: &RunState) -> Option<u8> {
+    match state.color {
+        Some(InlineColor::Aci(index)) => Some(index),
+        _ => None,
+    }
 }
 
 pub fn resolve_inline_color(c: &InlineColor) -> Option<[f32; 3]> {
@@ -2308,6 +2361,19 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
         - sub.atoms[..visible_atoms]
             .last()
             .map_or(0.0, |atom| trailing_letter_gap(atom, entity_h, base_wf, &base_font_name));
+        // A TrueType line spans its glyphs' ink.
+        let (lead, trail) = if opts.vertical_text {
+            (0.0, 0.0)
+        } else {
+            let visible = &sub.atoms[..visible_atoms];
+            let bearing = |atom: Option<&LayoutAtom>, trailing| {
+                atom.map_or(0.0, |atom| {
+                    side_bearing(atom, entity_h, base_wf, &base_font_name, trailing)
+                })
+            };
+            (bearing(visible.first(), false), bearing(visible.last(), true))
+        };
+        let line_w = line_w - lead - trail;
         line_widths.push(line_w);
 
         let cursor_start = if rect_w > 0.0 {
@@ -2394,7 +2460,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
         let mut cursor_x = if opts.vertical_text {
             0.0
         } else {
-            cursor_start
+            cursor_start - lead
         };
         for (ai, atom) in sub.atoms.iter().enumerate() {
             match &atom.kind {
@@ -2460,6 +2526,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                                     oblique,
                                     tracking: atom.state.tracking,
                                     bold: atom.state.bold,
+                                    aci: inline_aci(&atom.state),
                                 }),
                             });
                             let gx = line_lx + col_dx;
@@ -2538,6 +2605,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                                 oblique,
                                 tracking,
                                 bold: atom.state.bold,
+                                aci: inline_aci(&atom.state),
                             }),
                         });
                         // Underline / overline / strike are lines, not glyphs;
@@ -2740,10 +2808,18 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                                 oblique,
                                 tracking,
                                 bold: atom.state.bold,
+                                aci: inline_aci(&atom.state),
                             }),
                         });
                     };
-                    emit(denominator, valign_dy);
+                    // A `^` stack with no top half is a subscript: its
+                    // bottom half drops below the baseline (#2236).
+                    let bottom_dy = if numerator.is_empty() && !*bar {
+                        valign_dy - run_h * STACK_RAISE * 0.5
+                    } else {
+                        valign_dy
+                    };
+                    emit(denominator, bottom_dy);
                     emit(numerator, valign_dy + run_h * STACK_RAISE);
 
                     if opts.want_glyph_boxes {
@@ -2751,6 +2827,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                             + denominator.chars().count()
                             + usize::from(!denominator.is_empty());
                         if slots > 0 {
+                            let valign_dy = bottom_dy;
                             let top = valign_dy + run_h * (STACK_RAISE + STACK_HALF_SCALE);
                             for index in 0..slots {
                                 let x0 = cursor_x + slot_w * index as f32 / slots as f32;

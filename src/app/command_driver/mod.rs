@@ -89,6 +89,7 @@ mod parameters;
 mod property_match;
 mod solid3d;
 mod tests;
+mod autolisp_tests;
 mod text_edit;
 mod transform;
 mod utilities;
@@ -112,6 +113,16 @@ impl OpenCADStudio {
     /// command, so `was_active` is false and their selection is preserved.
     pub(super) fn apply_cmd_result(&mut self, mut result: CmdResult) -> Task<Message> {
         let i = self.active_tab;
+        let panel_updates = self.tabs[i]
+            .active_cmd
+            .as_mut()
+            .map(|c| c.take_pending_panel_updates())
+            .unwrap_or_default();
+        for (panel_id, values) in panel_updates {
+            if let Some(panel) = self.plugin_panels.get_mut(&panel_id) {
+                panel.update_values(values);
+            }
+        }
         if let CmdResult::ReturnPoint(pt) = result {
             self.tabs[i].scene.clear_preview_wire();
             if let Some(mut suspended) = self.tabs[i].suspended_cmd.take() {
@@ -371,6 +382,9 @@ impl OpenCADStudio {
     }
 
     pub(in crate::app) fn start_mtp_modifier(&mut self, i: usize) {
+        if self.tabs[i].suspended_cmd.is_some() {
+            return;
+        }
         let parent = self.tabs[i].active_cmd.take();
         self.tabs[i].suspended_cmd = parent;
         self.tabs[i].scene.clear_preview_wire();
@@ -380,6 +394,32 @@ impl OpenCADStudio {
         self.command_line.push_info(&prompt);
         self.command_line.set_step_options(Vec::new());
         self.refresh_active_cmd_preview(i);
+    }
+
+    pub(in crate::app) fn start_from_modifier(&mut self, i: usize) {
+        // There is only one parking slot; never overwrite an existing parent.
+        if self.tabs[i].suspended_cmd.is_some() {
+            return;
+        }
+        let parent = self.tabs[i].active_cmd.take();
+        self.tabs[i].suspended_cmd = parent;
+        self.tabs[i].scene.clear_preview_wire();
+        let cmd = crate::command::FromPointCommand::new(self.last_point);
+        let prompt = crate::command::CadCommand::prompt(&cmd);
+        self.tabs[i].active_cmd = Some(Box::new(cmd));
+        self.command_line.push_info(&prompt);
+        self.command_line.set_step_options(Vec::new());
+        self.sync_dyn_fields();
+        self.refresh_active_cmd_preview(i);
+    }
+
+    pub(in crate::app) fn relative_input_base(&self, i: usize) -> Option<glam::DVec3> {
+        self.tabs[i]
+            .active_cmd
+            .as_ref()
+            .filter(|c| c.name() == "FROM")
+            .and_then(|c| c.resolved_anchor())
+            .or(self.last_point)
     }
 
     /// Apply a command replacement without deleting a one-to-one entity edit.
@@ -889,12 +929,26 @@ impl OpenCADStudio {
             CmdResult::EditDimensionJog { dimension, point } => {
                 self.handle_edit_dimension_jog(dimension, point);
             }
+            CmdResult::ReassociateDimension {
+                dimension,
+                target,
+                last,
+            } => {
+                self.handle_reassociate_dimension(dimension, target, last);
+            }
             CmdResult::SpaceDimensions {
                 base,
                 others,
                 spacing,
             } => {
                 self.handle_space_dimensions(base, others, spacing);
+            }
+            CmdResult::DistributeDimensions {
+                base,
+                dimensions,
+                offset,
+            } => {
+                self.handle_distribute_dimensions(base, dimensions, offset);
             }
             CmdResult::ReplaceEntity(handle, new_entities) => {
                 if let Some(task) = self.handle_replace_entity(handle, new_entities) {
@@ -1226,6 +1280,7 @@ impl OpenCADStudio {
         } else {
             self.focus_cmd_input()
         };
+        crate::ui::ribbon::keytip_note_command_finished();
         Task::batch([dispatched, focus])
     }
 
@@ -1292,6 +1347,7 @@ impl OpenCADStudio {
     }
 
     fn handle_done(&mut self) {
+        crate::ui::ribbon::keytip_note_command_finished();
         let i = self.active_tab;
         self.tabs[i].scene.clear_preview_wire();
         if self.tabs[i].suspended_cmd.is_some() {
@@ -1316,6 +1372,7 @@ impl OpenCADStudio {
     }
 
     fn handle_cancel(&mut self, cancel: CmdResult) {
+        crate::ui::ribbon::keytip_note_command_finished();
         let i = self.active_tab;
         self.tabs[i].pending_parameter_set_follow_up = None;
         self.tabs[i].pending_xy_box_set = None;
@@ -1324,7 +1381,16 @@ impl OpenCADStudio {
         let space_changed = matches!(cancel, CmdResult::CancelForSpaceChange);
         self.tabs[i].scene.clear_preview_wire();
         if !space_changed && self.tabs[i].suspended_cmd.is_some() {
+            if let Some(point) = self.tabs[i]
+                .active_cmd
+                .as_ref()
+                .and_then(|c| c.modifier_restore_point())
+            {
+                self.last_point = point;
+                self.reset_tracking_after_point();
+            }
             self.tabs[i].active_cmd = self.tabs[i].suspended_cmd.take();
+            self.sync_dyn_fields();
             let prompt = self.tabs[i].active_cmd.as_ref().map(|c| c.prompt());
             if let Some(p) = prompt {
                 self.command_line.push_info(&p);
@@ -1357,6 +1423,64 @@ impl OpenCADStudio {
             self.command_line.push_error(line);
         }
         self.apply_cmd_result(CmdResult::Cancel)
+    }
+
+    /// A window between two typed corners, run through the same box test
+    /// as a dragged one: a box upright on the screen (so in a twisted or 3D
+    /// view its sides follow the screen), window or crossing by the drag's
+    /// rule, and the same filters.
+    pub(super) fn select_typed_window(
+        &mut self,
+        first: glam::DVec3,
+        second: glam::DVec3,
+    ) -> Task<Message> {
+        let i = self.active_tab;
+        let canvas = self.tabs[i].scene.selection.borrow().view.vp_size;
+        let bounds = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: canvas.0,
+            height: canvas.1,
+        };
+        let edit_cam = self.tabs[i]
+            .scene
+            .viewport_edit_frame(canvas)
+            .map(|(cam, _)| cam);
+        let (view_rot, eye, _) = self.pick_view(i, &edit_cam, bounds);
+        let a = crate::scene::pick::hit_test::world_to_screen(first, view_rot, eye, bounds);
+        let p = crate::scene::pick::hit_test::world_to_screen(second, view_rot, eye, bounds);
+        let crossing = {
+            // A Window / Crossing keyword holds for this one box, as for a
+            // dragged one.
+            let mut selection = self.tabs[i].scene.selection.borrow_mut();
+            let gesture = &mut selection.gesture;
+            let crossing = if gesture.box_crossing_locked {
+                gesture.box_crossing
+            } else {
+                crate::scene::selection_box_crossing(a, p)
+            };
+            gesture.box_crossing = false;
+            gesture.box_crossing_locked = false;
+            crossing
+        };
+        let (mut handles, _) = self.box_selection_handles(i, &edit_cam, bounds, a, p, crossing);
+        handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
+        self.filter_handles_reject_locked(i, &mut handles);
+        self.last_pick = Some((handles.clone(), self.select_remove_mode));
+        if self.select_remove_mode {
+            self.tabs[i].scene.deselect_entities(&handles);
+        } else {
+            self.tabs[i].scene.select_entities(&handles);
+            self.tabs[i].scene.expand_selection_for_groups(&handles);
+        }
+        self.refresh_properties();
+        let selected: Vec<Handle> = self.tabs[i]
+            .scene
+            .selected_entities()
+            .into_iter()
+            .map(|(h, _)| h)
+            .collect();
+        self.feed_command(StepInput::SelectionComplete(selected))
     }
 
     fn handle_select_by_path(
@@ -1456,6 +1580,51 @@ impl OpenCADStudio {
         // through the normal dispatcher. Selection is left untouched.
         // The option picked in DIMCONSTRAINT becomes its next default;
         // the same command run on its own leaves the default alone.
+        // DIM's Offset sets the drawing's DIMDLI; the series goes on.
+        if let Some(value) = cmd
+            .strip_prefix("_DIM_SET_DIMDLI ")
+            .and_then(|value| value.trim().parse::<f64>().ok())
+        {
+            self.tabs[i].scene.document.header.dim_line_increment = value;
+            self.tabs[i].dirty = true;
+            if let Some(command) = self.tabs[i].active_cmd.as_ref() {
+                let (prompt, options) = (command.prompt(), command.options());
+                self.command_line.push_info(&prompt);
+                self.command_line.set_step_options(options);
+            }
+            return Task::none();
+        }
+        // DIM's answer about the dimensions it placed one over; DIM (or its
+        // continued series) goes on.
+        if let Some(rest) = cmd.strip_prefix("_DIM_OVERLAP ") {
+            let mut parts = rest.split_whitespace();
+            let choice = parts.next().and_then(|v| v.chars().next()).unwrap_or('N');
+            let new = parts
+                .next()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(codec::Handle::new);
+            let others: Vec<codec::Handle> = parts
+                .next()
+                .unwrap_or("")
+                .split(',')
+                .filter_map(|v| v.parse::<u64>().ok())
+                .map(codec::Handle::new)
+                .collect();
+            if let (Some(new), false) = (new, others.is_empty() || choice == 'N') {
+                let dimdli = crate::scene::creation_style::drawing_dimdli(
+                    &self.tabs[i].scene.document,
+                );
+                self.push_undo_snapshot(i, "DIM");
+                dim_edit::apply_dim_overlap(&mut self.tabs[i].scene, choice, new, &others, dimdli);
+                self.tabs[i].dirty = true;
+            }
+            if let Some(command) = self.tabs[i].active_cmd.as_ref() {
+                let (prompt, options) = (command.prompt(), command.options());
+                self.command_line.push_info(&prompt);
+                self.command_line.set_step_options(options);
+            }
+            return Task::none();
+        }
         let from_menu = self.tabs[i]
             .active_cmd
             .as_ref()
@@ -1857,6 +2026,16 @@ fn entity_at_typed_point(
         let distance =
             match crate::scene::viewport_dimension_pick::planar_pick_distance(entity, point) {
                 Some(distance) => distance,
+                // A multileader answers by its leader lines and landings.
+                None if matches!(entity, codec::EntityType::MultiLeader(_)) => match entity {
+                    codec::EntityType::MultiLeader(ml) => {
+                        crate::modules::annotate::mleader_edit::mleader_pick_distance(
+                            ml,
+                            codec::types::Vector3::new(point.x, point.y, point.z),
+                        )
+                    }
+                    _ => continue,
+                },
                 // A text or an ellipse answers by its extent, the way a click
                 // inside it picks it.
                 None if matches!(
@@ -2129,16 +2308,19 @@ fn apply_mleader_collect(
                 }
                 centres.push(glam::DVec2::new(point.x, y));
             }
-            Layout::Horizontal | Layout::Wrap(_) => {
+            Layout::Horizontal | Layout::Wrap(_) | Layout::WrapNumber(_) => {
                 if index > 0 {
                     x += sizes[index - 1].1.x * 0.5 + size.x * 0.5;
                 }
-                if let Layout::Wrap(width) = layout {
-                    if width > 0.0 && x + size.x * 0.5 - point.x > width && index > 0 {
-                        x = point.x;
-                        y -= row_height;
-                        row_height = 0.0;
-                    }
+                let wrap = match layout {
+                    Layout::Wrap(width) => width > 0.0 && x + size.x * 0.5 - point.x > width,
+                    Layout::WrapNumber(count) => index % count.max(1) as usize == 0,
+                    _ => false,
+                };
+                if wrap && index > 0 {
+                    x = point.x;
+                    y -= row_height;
+                    row_height = 0.0;
                 }
                 row_height = row_height.max(size.y);
                 centres.push(glam::DVec2::new(x, y));

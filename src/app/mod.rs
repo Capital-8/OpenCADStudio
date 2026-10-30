@@ -56,11 +56,15 @@ mod measurement;
 mod model_ops;
 mod mtext_editor;
 mod navigation;
-mod node_graph;
+#[cfg(test)]
+mod object_isolation_tests;
+pub(crate) mod node_graph;
 mod options_session;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_host;
 mod presspull_ops;
+mod purge_dialog;
+mod rename_dialog;
 mod properties;
 mod quick_calc;
 #[cfg(test)]
@@ -668,9 +672,16 @@ pub(super) struct OpenCADStudio {
     quick_properties: bool,
     /// Canvas-space cursor position where Quick Properties was last opened.
     quick_properties_anchor: Point,
+    /// QPLOCATION (see `Settings::quick_properties_float`).
+    quick_properties_float: bool,
+    quick_properties_pos: Point,
     /// Selection cycling: clicking where objects overlap opens a list box
     /// to pick which one; the pick is added to the current selection.
     selection_cycling: bool,
+    /// OSNAPZ (see `Settings::osnap_z`).
+    osnap_z: bool,
+    /// SELECTSIMILARMODE (see `Settings::select_similar_mode`).
+    select_similar_mode: u16,
     /// PICKADD (#226): true (default) = clicks accumulate; false = OS-style
     /// replace-on-click with Shift toggling.
     pick_add: bool,
@@ -693,6 +704,12 @@ pub(super) struct OpenCADStudio {
     /// editor" on; it opens once the definition is committed.
     block_definition_open_editor: Option<String>,
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
+    rename_dialog: Option<crate::ui::window::rename::State>,
+    purge_dialog: Option<crate::ui::window::purge::State>,
+    /// The Purge dialog's choice, for the PURGE it runs.
+    purge_only: Option<purge_dialog::PurgeOnly>,
+    /// Select Similar settings being edited.
+    select_similar_settings: Option<u16>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
     block_visibility: Option<crate::ui::window::block_visibility::State>,
     block_lookup: Option<crate::ui::window::block_lookup::State>,
@@ -785,9 +802,27 @@ pub(super) struct OpenCADStudio {
     zoom_wheel_reversed: bool,
     /// Which mouse gestures pan and orbit the model view.
     navigation_style: crate::app::settings::NavigationStyle,
-    /// CATIA navigation: the left button went down while the middle one was
-    /// held, so the middle drag orbits until it is released.
-    nav_left_with_middle: bool,
+    /// The mouse buttons held over the view, for the navigation style.
+    nav_held: crate::app::settings::NavButtons,
+    /// A left (`true`) or right button press a navigation style may turn
+    /// into a drag: where it went down and the message it was, replayed as a
+    /// click when the button comes up without a drag.
+    nav_pending: Option<(bool, iced::Point, Message)>,
+    /// The left/right buttons whose release navigation keeps for itself.
+    nav_claimed: crate::app::settings::NavButtons,
+    /// The navigation drag under way was started by the left or right
+    /// button (or a Touchpad modifier), not the middle one.
+    nav_drag_by_button: bool,
+    /// Where the middle button went down, to tell a click from a drag.
+    nav_middle_press: Option<iced::Point>,
+    /// Where the right button went down during a middle drag (CATIA zoom).
+    nav_right_press: Option<iced::Point>,
+    /// CATIA: a right click during the middle drag made it zoom.
+    nav_zoom_latched: bool,
+    /// A pending press is being replayed through the normal path.
+    nav_replay: bool,
+    /// True while Alt is held (Maya-Gesture and Touchpad navigation).
+    alt_down: bool,
     /// UCSDETECT: a command's first point on a planar solid face sets the
     /// UCS to that face until the command ends.
     dynamic_ucs: bool,
@@ -971,6 +1006,9 @@ pub(super) struct OpenCADStudio {
     /// The objects the last selection step picked (a click, a window, a
     /// fence, Last / Previous / All) and whether it removed them.
     pub(crate) last_pick: Option<(Vec<codec::Handle>, bool)>,
+    /// The first corner of a window typed at a selection prompt, keyed by
+    /// the gathering command, until the opposite corner is typed.
+    pub(crate) typed_window_corner: Option<(usize, glam::DVec3)>,
     /// The Edit Reference dialog's remembered settings.
     pub(crate) refedit_options: crate::app::settings::RefEditOptions,
     /// BLOCKREDEFINEMODE (0–2).
@@ -1094,6 +1132,10 @@ pub(super) struct OpenCADStudio {
     )>,
     /// Document dirty state before the live grip mutation began.
     grip_dirty_before: Option<bool>,
+    /// Where the press that picked up the active grip went down: released
+    /// near it, the press was a click and the grip stays hot for a second
+    /// click to place it.
+    grip_engage_press: Option<Point>,
     /// Frozen pre-drag wire geometry used only as a visual/reference snapshot.
     ///
     /// It is deliberately NOT added to normal snap candidates: the live entity is
@@ -1297,6 +1339,13 @@ pub(super) struct OpenCADStudio {
     /// The open in-canvas modal dialog, if any (Plan B: shared overlay instead
     /// of OS windows).
     active_modal: Option<ModalKind>,
+    /// State backing an active declarative plugin modal dialog.
+    pub(crate) plugin_dialog_state: Option<crate::ui::window::plugin_dialog::PluginDialogState>,
+    /// Persistent dockable side panels registered by plugins.
+    pub(crate) plugin_panels: std::collections::BTreeMap<String, crate::ui::window::plugin_panel::PluginPanelState>,
+    /// Numeric mapping for PanelId::Plugin(u32).
+    pub(crate) plugin_panel_ids: std::collections::HashMap<String, u32>,
+    pub(crate) plugin_panel_by_num: std::collections::HashMap<u32, String>,
     /// Selection and staged values owned by the Properties hyperlink dialog.
     hyperlink_editor_handles: Vec<codec::Handle>,
     hyperlink_editor_block: Option<(u64, codec::Handle)>,
@@ -1439,6 +1488,9 @@ pub(super) struct OpenCADStudio {
     font_source_url: String,
     /// Template a new drawing starts from (QNEW); empty = blank.
     qnew_template: String,
+    /// The start page's template list, while it is open: the drawing
+    /// templates beside the default one.
+    start_templates: Option<Vec<std::path::PathBuf>>,
     /// Editable copy of `font_source_url` shown in the missing-fonts prompt.
     font_source_input: String,
     donation_prompt_version: String,
@@ -1821,6 +1873,12 @@ pub(super) struct OpenCADStudio {
     /// Locked-file failure currently shown in the recovery dialog.
     #[cfg(not(target_arch = "wasm32"))]
     pending_save_failure: Option<PendingSaveFailure>,
+    /// Extraction tables an event (DXEVAL) found outdated, still to answer,
+    /// and the message that carries the event on afterwards.
+    pub(crate) extraction_outdated: Option<ExtractionPrompt>,
+    /// The next DXEVAL event goes ahead unchecked: the one the window above
+    /// just answered for.
+    pub(crate) extraction_checked: bool,
     /// Save stopped because the drawing changed outside this editor.
     #[cfg(not(target_arch = "wasm32"))]
     pending_external_change: Option<PendingExternalChange>,
@@ -1843,6 +1901,13 @@ pub(super) struct OpenCADStudio {
     // ── DimStyle Dialog ───────────────────────────────────────────────────
     /// Name of the style currently shown in the dialog.
     dimstyle_selected: String,
+    /// The arrowhead field whose User Arrow block list is open.
+    dimstyle_user_arrow: Option<&'static str>,
+    /// The next EnterViewport moves to another viewport within a running
+    /// command (Ctrl+R) and must not cancel it.
+    viewport_switch_keeps_command: bool,
+    /// CHSPACE from paper space waiting for its target viewport: the objects.
+    chspace_pending: Option<Vec<codec::Handle>>,
     /// Which colour field currently has its expanded palette open (if any).
     ds_color_open: Option<DsField>,
     /// Active property group in the dimension style manager.
@@ -2013,6 +2078,15 @@ pub(super) struct PendingWebThumbnailSave {
     bounds: iced::Rectangle,
 }
 
+/// Extraction tables found outdated by a DXEVAL event.
+#[derive(Debug, Clone)]
+pub(crate) struct ExtractionPrompt {
+    pub tables: Vec<crate::app::annotation_data::OutdatedExtraction>,
+    /// How many there were, for the window's counter.
+    pub count: usize,
+    pub resume: Option<Message>,
+}
+
 #[derive(Debug, Clone)]
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) struct PendingSaveFailure {
@@ -2106,6 +2180,8 @@ pub enum ColorPickTarget {
     Ribbon,
     /// A layer's colour, by layer name.
     Layer(String),
+    /// A layer's colour override in one layout viewport.
+    LayerViewport(String, codec::Handle),
     /// A saved layer-state layer's colour, by editor row index.
     LayerState(usize),
     /// The MText editor's selection (or global) colour.
@@ -2771,6 +2847,9 @@ pub enum ModalKind {
     Unsaved,
     BlockEditChanges,
     BlockEditPicker,
+    Rename,
+    Purge,
+    SelectSimilarSettings,
     BlockSaveAs,
     BlockVisibility,
     BlockLookup,
@@ -2829,11 +2908,15 @@ pub enum ModalKind {
     TdsMaterial,
     /// A texture map a 3D Studio import did not find, one window per map.
     TdsMissingMap,
+    /// An extraction table outdated at open/save/plot/publish.
+    ExtractionOutdated,
     /// Web: a crash-recovery autosave snapshot newer than the drawing's last
     /// save awaits a restore/discard decision. Distinct from the corrupt-file
     /// `RecoveryPrompt` — nothing is wrong with the drawing itself.
     #[cfg(target_arch = "wasm32")]
     AutosaveRestore,
+    /// Declarative modal dialog opened by a plugin.
+    PluginDialog,
 }
 
 /// A property group controlled by a layer state's restore mask.
@@ -3072,6 +3155,7 @@ pub enum Message {
     /// Mid Between 2 Points from the snap menu: modal 2-pick modifier over
     /// the active point prompt.
     SnapOverrideMtp,
+    SnapOverrideFrom,
     /// Snap Overrides ▸ None: the next pick ignores object snaps.
     SnapOverrideNone,
     /// Close the one-shot snap override menu without picking.
@@ -3196,6 +3280,8 @@ pub enum Message {
     QnewTemplateBrowse,
     /// NEW: the picked template a new drawing starts from (`None` = cancelled).
     NewFromTemplate(Option<std::path::PathBuf>),
+    /// Open (true) or close the start page's template list.
+    StartTemplates(bool),
     /// Set the default type/version used when first saving a new drawing.
     DefaultSaveFormatChanged(String),
     /// Select one of Iced's built-in themes or the editable Custom theme.
@@ -3411,6 +3497,41 @@ pub enum Message {
         command: String,
         path: Option<std::path::PathBuf>,
     },
+    /// Live text change in a plugin modal dialog control.
+    PluginDialogTextChange(String, String),
+    /// Checkbox toggle in a plugin modal dialog control.
+    PluginDialogBoolToggle(String, bool),
+    /// Dropdown choice selection in a plugin modal dialog control.
+    PluginDialogChoiceSelect(String, usize),
+    /// Color selection change in a plugin modal dialog control.
+    PluginDialogColorChange(String, [u8; 3]),
+    /// User clicked Browse on a file picker control in a plugin modal dialog.
+    PluginDialogFilePick(String),
+    /// File chosen from OS dialog for a file picker control.
+    PluginDialogFilePicked(String, Option<std::path::PathBuf>),
+    /// Table cell text change in a plugin modal dialog.
+    PluginDialogTableCellChange(String, usize, usize, String),
+    /// Add empty row to a table in a plugin modal dialog.
+    PluginDialogTableAddRow(String),
+    /// Remove a row from a table in a plugin modal dialog.
+    PluginDialogTableRemoveRow(String, usize),
+    /// Collapse / expand toggle for a property fields section.
+    PluginDialogSectionToggle(String),
+    /// Submit / OK clicked in a plugin modal dialog.
+    PluginDialogSubmit,
+    /// Cancel clicked in a plugin modal dialog.
+    PluginDialogCancel,
+    // ── Plugin dock panels ─────────────────────────────────────────────────
+    PluginPanelButtonClick(String, String, Option<String>),
+    PluginPanelTextChange(String, String, String),
+    PluginPanelBoolToggle(String, String, bool),
+    PluginPanelChoiceSelect(String, String, usize, String),
+    PluginPanelFilePick(String, String),
+    PluginPanelFilePicked(String, String, Option<std::path::PathBuf>),
+    PluginPanelTableCellChange(String, String, usize, usize, String),
+    PluginPanelTableAddRow(String, String),
+    PluginPanelTableRemoveRow(String, String, usize),
+    PluginPanelSectionToggle(String, String),
     // ── Document tabs ──────────────────────────────────────────────────────
     /// Create a new empty document tab.
     TabNew,
@@ -3458,6 +3579,11 @@ pub enum Message {
     BlockEditPickerName(String),
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
+    Rename(crate::ui::window::rename::RenameMsg),
+    Purge(crate::ui::window::purge::PurgeMsg),
+    /// Select Similar settings: flip one SELECTSIMILARMODE bit.
+    SelectSimilarSettingsToggle(u16),
+    SelectSimilarSettingsOk,
     // ── AEC / unsupported-object drop warning (lossy Save-As) ──────────────
     /// Save as the source DWG version so the unsupported objects survive.
     AecDropSameVersion,
@@ -3798,6 +3924,8 @@ pub enum Message {
     LayerStateManagerDescription(String),
     LayerStateManagerSave,
     LayerStateManagerRestore,
+    /// Restore a saved layer state picked in the ribbon's layer dropdown.
+    RibbonLayerStateRestore(String),
     LayerStateManagerDelete,
     LayerStateManagerEdit,
     LayerStateEditorMaskToggle(LayerStateProperty),
@@ -4147,6 +4275,10 @@ pub enum Message {
     DraftingSettingsToggle3dOsnap,
     DraftingSettingsToggleDynInput,
     DraftingSettingsToggleQuickProps,
+    /// Quick Properties palette location: floating (true) or by the cursor.
+    DraftingSettingsQuickPropsFloat(bool),
+    /// The Quick Properties title bar was pressed: start moving the panel.
+    QuickPropertiesGrab,
     DraftingSettingsToggleSelCycling,
     DraftingSettingsApply,
     DraftingSettingsOk,
@@ -4155,6 +4287,8 @@ pub enum Message {
     DraftingSettingsCloseKeep,
     /// Options window: commit the changes made so far.
     OptionsApply,
+    /// Options window: every preference back to its default, uncommitted.
+    OptionsRestoreDefaults,
     /// Options window: commit and close.
     OptionsOk,
     /// Options window: close, asking first when changes would be lost.
@@ -4611,6 +4745,7 @@ pub enum Message {
     SetModifiers {
         shift: bool,
         ctrl: bool,
+        alt: bool,
     },
     // ── In-place MText editor ───────────────────────────────────────────
     /// Text-area edit action from the multi-line editor widget.
@@ -4636,6 +4771,8 @@ pub enum Message {
     MTextRedo,
     /// Convert the selected numerator/separator/denominator to a stacked run.
     MTextStack,
+    /// Superscript (true) or subscript (false) the selection.
+    MTextScript(bool),
     /// Remove inline character formatting from the selection (or all text).
     MTextClearFormatting,
     /// Insert a predefined symbol or field token at the caret.
@@ -4790,6 +4927,8 @@ pub enum Message {
     PlotDialogOpen,
     /// An edit inside the Plot / Print dialog.
     PlotDlg(crate::ui::window::plot::PlotDlgMsg),
+    /// The answer to the outdated extraction table window.
+    ExtractionOutdated(crate::ui::window::extraction_outdated::OutdatedChoice),
     /// An edit inside the docked Insert Block panel.
     BlockPalette(crate::ui::window::block_palette::BlockPaletteMsg),
     /// A dock chrome interaction (grab/resize/pin/hover/dock move) on a side
@@ -4807,6 +4946,9 @@ pub enum Message {
     PrintAllOptions,
     /// Save the selected layouts as one multi-page PDF.
     PrintAllPdf,
+    /// Save the selected layouts as one multi-page PDF at a given path
+    /// (automation: no file picker).
+    PrintAllPdfTo(std::path::PathBuf),
     /// Callback after the multi-page PDF path is picked or cancelled.
     PrintAllPdfPath(Option<std::path::PathBuf>),
     /// Send the selected layouts to the configured printer as one job.
@@ -5305,7 +5447,11 @@ impl OpenCADStudio {
             clean_screen_properties: false,
             quick_properties: false,
             quick_properties_anchor: Point::new(12.0, 12.0),
+            quick_properties_float: false,
+            quick_properties_pos: Point::new(40.0, 40.0),
             selection_cycling: false,
+            osnap_z: false,
+            select_similar_mode: crate::scene::SELECT_SIMILAR_DEFAULT,
             pick_add: true,
             select_remove_mode: false,
             last_layer_translation: None,
@@ -5314,6 +5460,10 @@ impl OpenCADStudio {
             block_definition: None,
             block_definition_open_editor: None,
             block_edit_picker: None,
+            rename_dialog: None,
+            purge_dialog: None,
+            purge_only: None,
+            select_similar_settings: None,
             block_save_as: None,
             block_visibility: None,
             block_lookup: None,
@@ -5357,7 +5507,15 @@ impl OpenCADStudio {
             polar_increment_deg: 45.0,
             zoom_wheel_reversed: false,
             navigation_style: Default::default(),
-            nav_left_with_middle: false,
+            nav_held: Default::default(),
+            nav_pending: None,
+            nav_claimed: Default::default(),
+            nav_drag_by_button: false,
+            nav_middle_press: None,
+            nav_right_press: None,
+            nav_zoom_latched: false,
+            nav_replay: false,
+            alt_down: false,
             dynamic_ucs: true,
             dynamic_ucs_restore: None,
             // A Mac's built-in trackpad is the common case there.
@@ -5453,6 +5611,7 @@ impl OpenCADStudio {
             block_mru_list: 50,
             selection_report: None,
             last_pick: None,
+            typed_window_corner: None,
             refedit_options: Default::default(),
             block_redefine_mode: 1,
             block_navigate: ".".to_string(),
@@ -5495,6 +5654,7 @@ impl OpenCADStudio {
             grip_originals: Vec::new(),
             grip_history_originals: Vec::new(),
             grip_dirty_before: None,
+            grip_engage_press: None,
             grip_reference_wires: Vec::new(),
             grip_text_verts: Vec::new(),
             grip_text_slide: false,
@@ -5576,6 +5736,10 @@ impl OpenCADStudio {
             color_books: Default::default(),
             color_books_read: false,
             active_modal: None,
+            plugin_dialog_state: None,
+            plugin_panels: std::collections::BTreeMap::new(),
+            plugin_panel_ids: std::collections::HashMap::new(),
+            plugin_panel_by_num: std::collections::HashMap::new(),
             hyperlink_editor_handles: Vec::new(),
             hyperlink_editor_block: None,
             hyperlink_editor_url: String::new(),
@@ -5637,6 +5801,7 @@ impl OpenCADStudio {
             check_missing_fonts: true,
             font_source_url: String::new(),
             qnew_template: String::new(),
+            start_templates: None,
             font_source_input: String::new(),
             donation_prompt_version: String::new(),
             read_only: false,
@@ -5706,6 +5871,8 @@ impl OpenCADStudio {
             pending_save_leases: std::collections::HashMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
             pending_save_failure: None,
+            extraction_outdated: None,
+            extraction_checked: false,
             #[cfg(not(target_arch = "wasm32"))]
             pending_external_change: None,
             save_dialog_format: crate::io::DEFAULT_SAVE_FORMAT.to_string(),
@@ -5842,6 +6009,9 @@ impl OpenCADStudio {
             mls_block_scale_z: String::new(),
             // DimStyle dialog
             dimstyle_selected: "Standard".to_string(),
+            dimstyle_user_arrow: None,
+            viewport_switch_keeps_command: false,
+            chspace_pending: None,
             ds_color_open: None,
             dimstyle_tab: 0,
             dimstyle_compare: String::new(),
@@ -5970,6 +6140,12 @@ impl OpenCADStudio {
         id
     }
 
+    /// Open a declarative plugin modal dialog.
+    pub(crate) fn open_plugin_dialog(&mut self, def: ocs_plugin_api::dialog::DialogDef) {
+        self.plugin_dialog_state = Some(crate::ui::window::plugin_dialog::PluginDialogState::new(def));
+        self.active_modal = Some(ModalKind::PluginDialog);
+    }
+
     /// Install `cmd` as the active interactive command for tab `tab`.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn set_active_command(
@@ -5977,8 +6153,12 @@ impl OpenCADStudio {
         tab: usize,
         cmd: Box<dyn crate::command::CadCommand>,
     ) {
+        let dialog = cmd.modal_dialog();
         if let Some(t) = self.tabs.get_mut(tab) {
             t.active_cmd = Some(cmd);
+        }
+        if let Some(dialog_def) = dialog {
+            self.open_plugin_dialog(dialog_def);
         }
     }
 
@@ -6323,6 +6503,11 @@ pub fn run_web() -> iced::Result {
     })
     .theme(|state: &OpenCADStudio| state.active_theme.clone())
     .backend(iced::Backend::Hardware(iced::backend::Api::OpenGL))
+    // No MSAA for canvas geometry: WebGL resolves the multisampled target with
+    // the last draw's scissor still on, so only that rectangle came through.
+    // Pattern previews stayed blank, stale crosshairs and grips lingered over
+    // other panels (#2248, #2249, #2250).
+    .antialiasing(false)
     .font(iced_aw::ICED_AW_FONT_BYTES)
     .run()
 }

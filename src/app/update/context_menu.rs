@@ -55,8 +55,15 @@ impl OpenCADStudio {
                         Some(codec::EntityType::Hatch(_))
                     )
                 }),
+            single_mleader: tab.scene.selected.len() == 1
+                && tab.scene.selected.iter().all(|handle| {
+                    matches!(
+                        tab.scene.document.get_entity(*handle),
+                        Some(codec::EntityType::MultiLeader(_))
+                    )
+                }),
             selected_constraint: tab.scene.selected_constraint,
-            isolation_active: tab.scene.is_isolation_active(),
+            isolation_active: tab.scene.has_hidden_objects(),
             recent_cmds: self
                 .command_line
                 .recent_commands
@@ -152,6 +159,7 @@ impl OpenCADStudio {
             }
             MenuAction::Command(cmd) => self.update(Message::Command(cmd)),
             MenuAction::Mtp => self.update(Message::SnapOverrideMtp),
+            MenuAction::From => self.update(Message::SnapOverrideFrom),
             MenuAction::SnapOverride(t) => self.update(Message::SnapOverridePick(t)),
             MenuAction::SnapOverrideNone => self.update(Message::SnapOverrideNone),
             MenuAction::DeleteSelected => self.update(Message::DeleteSelected),

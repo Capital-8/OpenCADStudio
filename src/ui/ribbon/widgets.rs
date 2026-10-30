@@ -544,6 +544,57 @@ pub(super) fn tip_style(theme: &Theme) -> container::Style {
 
 // ── Small item renderer ────────────────────────────────────────────────────
 
+/// A small tool with its name beside the icon, `width` wide.
+fn labeled_tool<'a>(
+    t: &ToolDef,
+    active_tool: &Option<String>,
+    state: ToggleState,
+    width: Length,
+) -> Element<'a, Message> {
+    let active = is_active_tool(t.id, active_tool, &state);
+    let event = t.event.clone();
+    let tool_id = t.id.to_string();
+    let label = t!(t.label).into_owned();
+    let tip_text = tool_tip_text(&label, t.id);
+    let content = row![
+        container(make_icon(t.icon, SMALL_ICON)).width(Length::Fixed(SMALL_W)),
+        super::keytips::label_anchor(
+            || super::keytips::label_id(t.id),
+            text(label).size(10).wrapping(advanced_text::Wrapping::None),
+        ),
+    ]
+    .spacing(3)
+    .align_y(iced::Center);
+    let btn = button(content)
+        .on_press(Message::RibbonToolClick { tool_id, event })
+        .style(move |theme: &Theme, status| tool_btn_style(theme, active, status))
+        .width(width)
+        .height(ROW_H)
+        .padding([3, 4]);
+    super::keytips::anchor(
+        t.id,
+        tooltip(btn, make_tip(tip_text), TipPos::Right)
+            .gap(6.0)
+            .delay(Duration::from_millis(400))
+            .style(tip_style),
+    )
+}
+
+/// A small item of the Dimensions panel's bottom row: labeled tools take
+/// only the width of their name there.
+pub(super) fn render_row_item<'a>(
+    item: &RibbonItem,
+    active_tool: &Option<String>,
+    open_dd: &Option<String>,
+    last_cmd: &HashMap<&'static str, &'static str>,
+    state: ToggleState,
+) -> Element<'a, Message> {
+    match item {
+        RibbonItem::LabeledTool(t) => labeled_tool(t, active_tool, state, Length::Shrink),
+        _ => render_small(item, active_tool, open_dd, last_cmd, state),
+    }
+}
+
 /// Render a 1-row small button (Tool or Dropdown).
 pub(super) fn render_small<'a>(
     item: &RibbonItem,
@@ -576,33 +627,7 @@ pub(super) fn render_small<'a>(
         }
 
         RibbonItem::LabeledTool(t) => {
-            let active = is_active_tool(t.id, active_tool, &state);
-            let event = t.event.clone();
-            let tool_id = t.id.to_string();
-            let label = t!(t.label).into_owned();
-            let tip_text = tool_tip_text(&label, t.id);
-            let content = row![
-                container(make_icon(t.icon, SMALL_ICON)).width(Length::Fixed(SMALL_W)),
-                super::keytips::label_anchor(
-                    || super::keytips::label_id(t.id),
-                    text(label).size(10).wrapping(advanced_text::Wrapping::None),
-                ),
-            ]
-            .spacing(3)
-            .align_y(iced::Center);
-            let btn = button(content)
-                .on_press(Message::RibbonToolClick { tool_id, event })
-                .style(move |theme: &Theme, status| tool_btn_style(theme, active, status))
-                .width(Length::Fixed(LABELED_SMALL_W + ARROW_W))
-                .height(ROW_H)
-                .padding([3, 4]);
-            super::keytips::anchor(
-                t.id,
-                tooltip(btn, make_tip(tip_text), TipPos::Right)
-                    .gap(6.0)
-                    .delay(Duration::from_millis(400))
-                    .style(tip_style),
-            )
+            labeled_tool(t, active_tool, state, Length::Fixed(LABELED_SMALL_W + ARROW_W))
         }
 
         RibbonItem::Dropdown {
@@ -969,6 +994,16 @@ fn combo_panel_col(width: f32, items: Vec<Element<'_, Message>>) -> Element<'_, 
 
 /// Render a full-height large button (LargeTool, LargeDropdown, LayerCombo, StyleCombo).
 pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Element<'a, Message> {
+    render_large_with(item, ctx, Vec::new())
+}
+
+/// [`render_large`], with `below` (small labeled tools) as the bottom row of
+/// the Dimensions style/layer lists.
+pub(super) fn render_large_with<'a>(
+    item: &RibbonItem,
+    ctx: &RenderCtx<'_>,
+    below: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
     let active_tool = ctx.active_tool;
     let open_dd = ctx.open_dd;
     let last_cmd = ctx.last_cmd;
@@ -1340,7 +1375,12 @@ pub(super) fn render_large<'a>(item: &RibbonItem, ctx: &RenderCtx<'_>) -> Elemen
                     .align_y(iced::Center)
                     .into(),
                 );
-                return combo_panel_col(STYLE_COMBO_W * 1.7, col_items);
+                // The bottom row is wider than the lists with their tools.
+                let width = if below.is_empty() { 1.7 } else { 1.85 };
+                if !below.is_empty() {
+                    col_items.push(row(below).spacing(2).align_y(iced::Center).into());
+                }
+                return combo_panel_col(STYLE_COMBO_W * width, col_items);
             }
             // Leaders: the style list, the multileader layer list, then the
             // small tools.

@@ -80,6 +80,7 @@ pub fn root_named_dict_handle(doc: &mut Document) -> Handle {
 /// single (implicit, current-scale) representation. TEXT uses a context rather
 /// than a native flag; other entity types are not toggled here.
 pub fn set_entity_annotative(doc: &mut Document, handle: Handle, want: bool) {
+    set_annotative_marker(doc, handle, want);
     if let Some(e) = doc.get_entity_mut(handle) {
         match e {
             EntityType::MText(t) => t.is_annotative = want,
@@ -92,6 +93,22 @@ pub fn set_entity_annotative(doc: &mut Document, handle: Handle, want: bool) {
     if !want {
         clear_annotation_context(doc, handle);
     }
+}
+
+/// The object's own annotative flag, which other programs read before its
+/// annotation contexts: `AnnotativeData { 1, on }`.
+fn set_annotative_marker(doc: &mut Document, handle: Handle, on: bool) {
+    use codec::xdata::XDataValue;
+    let values = on.then(|| {
+        vec![
+            XDataValue::String("AnnotativeData".into()),
+            XDataValue::ControlString("{".into()),
+            XDataValue::Integer16(1),
+            XDataValue::Integer16(1),
+            XDataValue::ControlString("}".into()),
+        ]
+    });
+    crate::scene::view::dispatch::set_entity_xdata(doc, handle, "AcadAnnotative", values);
 }
 
 /// Derive the per-scale context payload for an entity from its current
@@ -202,6 +219,7 @@ fn attribute_context_for(
             xdictionary_handle: None,
             has_binary_data: false,
             class_version: 3,
+            has_file_to_extension_dictionary: true,
             is_default: false,
             scale,
             mtext: mtext_context_for(mtext),
@@ -413,6 +431,7 @@ pub fn create_annotation_context(
 
     let mgr_h = get_or_create_child_dict(doc, xdict_h, "AcDbContextDataManager");
     let coll_h = get_or_create_child_dict(doc, mgr_h, "ACDB_ANNOTATIONSCALES");
+    set_annotative_marker(doc, entity_handle, true);
 
     // Idempotent: if a leaf already applies to this scale, keep it.
     let existing = as_dict(doc, coll_h)
@@ -443,6 +462,8 @@ pub fn create_annotation_context(
         reactors: vec![coll_h],
         xdictionary_handle: None,
         class_version: 3,
+        has_file_to_extension_dictionary: true,
+        uses_legacy_mleader_context_base: false,
         is_default,
         scale: scale_handle,
         kind,
@@ -2060,26 +2081,24 @@ pub fn is_annotative(doc: &Document, entity: &EntityType) -> bool {
 /// Whether an object carries its own annotative state: a per-object
 /// annotation context or an annotative XDATA marker. Its style does not count.
 pub fn object_is_annotative(doc: &Document, common: &EntityCommon) -> bool {
-    // Per-object annotation context (works regardless of style).
-    if has_context_manager(doc, common) {
-        return true;
-    }
-    // Legacy annotative XDATA markers.
     let xd = &common.extended_data;
-    let standard_marker = xd
-        .get_record("AcadAnnotative")
-        .and_then(|record| {
-            record
-                .values
-                .iter()
-                .filter_map(|value| match value {
-                    codec::xdata::XDataValue::Integer16(value) => Some(*value),
-                    _ => None,
-                })
-                .last()
-        })
-        .is_some_and(|value| value != 0);
-    standard_marker
+    // The object's own flag wins: a context left behind after annotative was
+    // switched off is stored with the flag at 0.
+    let standard_marker = xd.get_record("AcadAnnotative").and_then(|record| {
+        record
+            .values
+            .iter()
+            .filter_map(|value| match value {
+                codec::xdata::XDataValue::Integer16(value) => Some(*value),
+                _ => None,
+            })
+            .last()
+    });
+    if let Some(flag) = standard_marker {
+        return flag != 0;
+    }
+    // Per-object annotation context (works regardless of style).
+    has_context_manager(doc, common)
         || xd.get_record("AcAnnoPO").is_some()
         || xd.get_record("AcAnnotativeData").is_some()
 }

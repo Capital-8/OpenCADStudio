@@ -538,6 +538,7 @@ impl RenderConvertible for Tolerance {
                     // measure wider than the text they drew.
                     tracking: 1.0,
                     bold: false,
+                    aci: None,
                 }),
             });
         }

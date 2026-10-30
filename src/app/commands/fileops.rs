@@ -3,12 +3,32 @@ use super::*;
 use crate::io::plot_style::PlotStyleTableExt as _;
 
 impl OpenCADStudio {
+    /// The drawing templates (.dwt) in the default template's folder.
+    pub(in crate::app) fn template_folder_files(&self) -> Vec<std::path::PathBuf> {
+        let Some(dir) = std::path::Path::new(self.qnew_template.trim()).parent() else {
+            return Vec::new();
+        };
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("dwt"))
+            })
+            .collect();
+        files.sort_by_key(|path| path.to_string_lossy().to_lowercase());
+        files
+    }
+
     pub(super) fn dispatch_fileops(&mut self, cmd: &str, i: usize) -> Option<Task<Message>> {
         match cmd {
             // QNEW starts from the default template (Options > Files); NEW
             // asks which template to start from (#1635).
             "QNEW" => return Some(Task::done(Message::TabNew)),
             "NEW" => {
+                self.start_templates = None;
                 // Open where the default template lives, so its neighbours in
                 // a template folder are one click away (#1836).
                 let template_dir = std::path::Path::new(self.qnew_template.trim())
@@ -660,6 +680,7 @@ impl OpenCADStudio {
                     self.command_line.push_error(&error);
                 }
             }
+            self.pump_plugin_requests();
             for entry in &self.command_line.history {
                 if entry.kind == crate::ui::command_line::EntryKind::Error {
                     eprintln!("{}", entry.text);

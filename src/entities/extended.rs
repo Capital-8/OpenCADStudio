@@ -1596,6 +1596,13 @@ fn properties(entity: &ExtendedEntity) -> Vec<PropSection> {
             )],
         }],
         ExtendedEntityData::SectionObject(data) => section_properties(entity, data),
+        ExtendedEntityData::Arch(data) => vec![PropSection {
+            title: t!("Class").into_owned(),
+            props: vec![
+                ro_prop(t!("Class").as_ref(), "ext_arch_class", data.dxf_name.clone()),
+                ro_prop(t!("Kind").as_ref(), "ext_arch_kind", format!("{:?}", data.kind)),
+            ],
+        }],
         ExtendedEntityData::ArcAlignedText(data) => arc_text_properties(data),
         ExtendedEntityData::RemoteText(data) => remote_text_properties(data),
         ExtendedEntityData::GeoPositionMarker(data) => geo_marker_properties(data),

@@ -833,6 +833,7 @@ class _Modify:
         original. Returns the copies."""
         return self._run("ARRAYPATH", [
             lambda c: c.entity(path, self._at(path, at)),
+            lambda c: c.token("DIVIDE"),
             lambda c: c.text(count),
         ], entities)
 

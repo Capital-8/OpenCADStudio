@@ -36,6 +36,30 @@ pub fn set_fonts_folder(folder: Option<PathBuf>) {
     *FONTS_FOLDER.write().unwrap_or_else(|e| e.into_inner()) = folder;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+static SUPPORT_FOLDER: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+/// A folder of the user's own support files — hatch patterns, linetypes,
+/// fonts and shape files — searched beside the built-in locations, so one
+/// folder (on a flash drive, say) carries them from machine to machine.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn support_folder() -> Option<PathBuf> {
+    SUPPORT_FOLDER
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn support_folder() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_support_folder(folder: Option<PathBuf>) {
+    *SUPPORT_FOLDER.write().unwrap_or_else(|e| e.into_inner()) = folder;
+}
+
 /// Local store for fonts downloaded from the community repository. Text
 /// resolution searches here after the drawing folder.
 #[cfg(not(target_arch = "wasm32"))]
@@ -128,17 +152,18 @@ pub fn missing_shx_fonts(doc: &Document) -> Vec<String> {
 /// case-insensitively by file name.
 pub fn local_font_file(name: &str) -> Option<PathBuf> {
     let file = name.rsplit(['/', '\\']).next()?;
-    let dir = fonts_dir()?;
-    let direct = dir.join(file);
-    if direct.is_file() {
-        return Some(direct);
-    }
     let lower = file.to_ascii_lowercase();
-    std::fs::read_dir(&dir)
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .find(|entry| entry.file_name().to_string_lossy().to_ascii_lowercase() == lower)
-        .map(|entry| entry.path())
+    fonts_dir().into_iter().chain(support_folder()).find_map(|dir| {
+        let direct = dir.join(file);
+        if direct.is_file() {
+            return Some(direct);
+        }
+        std::fs::read_dir(&dir)
+            .ok()?
+            .filter_map(|entry| entry.ok())
+            .find(|entry| entry.file_name().to_string_lossy().to_ascii_lowercase() == lower)
+            .map(|entry| entry.path())
+    })
 }
 
 /// List the community folder through the GitHub contents API.

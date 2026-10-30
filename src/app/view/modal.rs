@@ -64,6 +64,7 @@ impl OpenCADStudio {
             Some(K::TdsImport) => crate::tr!("import-3ds", "title"),
             Some(K::TdsMaterial) => crate::tr!("import-3ds-alert", "title"),
             Some(K::TdsMissingMap) => crate::tr!("import-3ds", "title"),
+            Some(K::ExtractionOutdated) => crate::tr!("extraction-outdated", "title"),
             Some(K::XrefAttach) => crate::t!("Attach External Reference").into_owned(),
             Some(K::WriteBlock) => crate::t!("Write Block").into_owned(),
             Some(K::GeometricTolerance) => crate::t!("Geometric Tolerance").into_owned(),
@@ -106,6 +107,9 @@ impl OpenCADStudio {
             Some(K::Unsaved) => crate::tr!("modal", "unsaved-changes"),
             Some(K::BlockEditChanges) => crate::t!("Block Editor").into_owned(),
             Some(K::BlockEditPicker) => crate::t!("Edit Block Definition").into_owned(),
+            Some(K::Rename) => crate::tr!("rename-dialog", "title"),
+            Some(K::Purge) => crate::tr!("purge-dialog", "title"),
+            Some(K::SelectSimilarSettings) => crate::tr!("select-similar", "title"),
             Some(K::BlockVisibility) => crate::t!("Visibility States").into_owned(),
             Some(K::BlockLookup) => crate::t!("Property Lookup Table").into_owned(),
             Some(K::BlockPropertiesTable) => crate::t!("Block Properties Table").into_owned(),
@@ -126,6 +130,11 @@ impl OpenCADStudio {
                 .as_ref()
                 .map(|d| d.title())
                 .unwrap_or_default(),
+            Some(K::PluginDialog) => self
+                .plugin_dialog_state
+                .as_ref()
+                .map(|s| s.title())
+                .unwrap_or_else(|| "Plugin Dialog".to_string()),
             None => String::new(),
         }
     }
@@ -274,6 +283,8 @@ impl OpenCADStudio {
                                     fonts_moved: crate::io::font_repo::fonts_folder().is_some(),
                                     plot_styles_moved: crate::io::plot_style::plot_styles_folder()
                                         .is_some(),
+                                    support: crate::io::font_repo::support_folder()
+                                        .map(|p| p.display().to_string()),
                                 }
                             }
                             #[cfg(target_arch = "wasm32")]
@@ -414,6 +425,17 @@ impl OpenCADStudio {
                     crate::ui::window::block_edit_picker::view(state, flow)
                 })
             }
+            super::super::ModalKind::SelectSimilarSettings => {
+                crate::ui::window::select_similar::view_window(self.select_similar_settings?)
+            }
+            super::super::ModalKind::Purge => {
+                let state = self.purge_dialog.as_ref()?;
+                sized_flow(ex, 460, 520, |flow| crate::ui::window::purge::view(state, flow))
+            }
+            super::super::ModalKind::Rename => {
+                let state = self.rename_dialog.as_ref()?;
+                sized_flow(ex, 520, 420, |flow| crate::ui::window::rename::view(state, flow))
+            }
             super::super::ModalKind::BlockLookup => {
                 let state = self.block_lookup.as_ref()?;
                 sized_flow(ex, 940, 600, |flow| {
@@ -543,6 +565,19 @@ impl OpenCADStudio {
                 let state = self.import_dialogs.tds_material.as_ref()?;
                 sized_flow(ex, 460, 420, |flow| {
                     crate::ui::window::import_dialogs::view_tds_material(state, flow)
+                })
+            }
+            super::super::ModalKind::ExtractionOutdated => {
+                let prompt = self.extraction_outdated.as_ref()?;
+                let first = prompt.tables.first()?;
+                let position = prompt.count - prompt.tables.len() + 1;
+                sized_flow(ex, 480, 250, |flow| {
+                    crate::ui::window::extraction_outdated::view(
+                        &first.settings,
+                        position,
+                        prompt.count,
+                        flow,
+                    )
                 })
             }
             super::super::ModalKind::TdsMissingMap => {
@@ -1374,6 +1409,20 @@ impl OpenCADStudio {
                         .iter()
                         .map(String::as_str),
                 );
+                // User Arrow… offers the drawing's own blocks on demand.
+                let mut block_opts = block_opts;
+                block_opts.push(crate::tr!("dimstyle", "user-arrow"));
+                let user_arrow_blocks: Vec<String> = doc
+                    .block_records
+                    .iter()
+                    .filter(|record| {
+                        !record.name.starts_with('*')
+                            && !record.name.contains('|')
+                            && !record.flags.is_xref
+                            && !record.flags.is_xref_overlay
+                    })
+                    .map(|record| record.name.clone())
+                    .collect();
                 let mut lt_opts: Vec<String> = vec!["ByBlock".to_string()];
                 lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
                 let text_style_opts: Vec<String> = doc
@@ -1660,6 +1709,8 @@ impl OpenCADStudio {
                             dimltex1_name: dimltex1_name.clone(),
                             dimltex2_name: dimltex2_name.clone(),
                             block_opts: block_opts.clone(),
+                            user_arrow_blocks: user_arrow_blocks.clone(),
+                            user_arrow_field: self.dimstyle_user_arrow,
                             lt_opts: lt_opts.clone(),
                             text_style_opts: text_style_opts.clone(),
                             text_style_fixed_height,
@@ -1882,6 +1933,11 @@ impl OpenCADStudio {
                     autosave_restore_dialog_window(&name, pending, session_drawings, flow)
                 })
             }
+            super::super::ModalKind::PluginDialog => {
+                let state = self.plugin_dialog_state.as_ref()?;
+                automatic_flow(ex, |_flow| state.view())
+            }
+
         })
     }
 

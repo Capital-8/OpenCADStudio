@@ -124,6 +124,8 @@ pub enum PanelId {
     Laywalk,
     /// The calculator (QUICKCALC).
     QuickCalc,
+    /// Dynamic plugin dockable side panel / palette (identified by unique numeric ID).
+    Plugin(u32),
 }
 
 impl PanelId {
@@ -160,6 +162,7 @@ impl PanelId {
             PanelId::Layers => "Layer Manager",
             PanelId::Laywalk => "Layer Walk",
             PanelId::QuickCalc => "QuickCalc",
+            PanelId::Plugin(_) => "Plugin",
         }
     }
 
@@ -181,6 +184,7 @@ impl PanelId {
             PanelId::Layers => include_bytes!("../../assets/icons/layers/panel.svg"),
             PanelId::Laywalk => include_bytes!("../../assets/icons/layers/laywalk.svg"),
             PanelId::QuickCalc => crate::ui::window::quick_calc::ICON,
+            PanelId::Plugin(_) => crate::ui::icons::MORE,
         }
     }
 
@@ -200,6 +204,7 @@ impl PanelId {
             PanelId::Layers => 560.0,
             PanelId::Laywalk => 420.0,
             PanelId::QuickCalc => 320.0,
+            PanelId::Plugin(_) => 280.0,
         }
     }
 
@@ -978,6 +983,8 @@ pub enum DockDrag {
     },
     /// Sizing the Layer Manager's Name column.
     LayerColumn,
+    /// Moving the floating Quick Properties panel.
+    QuickProperties,
 }
 
 impl DockDrag {
@@ -1051,7 +1058,7 @@ pub fn portion(weight: f32) -> u16 {
 /// `width` clamped to what fits on screen: at least [`DOCK_MIN_W`], at most
 /// `max` and 45 % of a `win_w` wide window.
 fn on_screen_width(width: f32, max: f32, win_w: f32) -> f32 {
-    width.clamp(DOCK_MIN_W, max.min(win_w * 0.45).max(DOCK_MIN_W))
+    width.clamp(DOCK_MIN_W, max.min(win_w * 0.75).max(DOCK_MIN_W))
 }
 
 /// Smallest docked width a panel may be dragged or sized to.
@@ -1449,10 +1456,10 @@ mod tests {
     fn width_respects_maximum_window_fraction() {
         let mut state = DockState::default();
         state.set_group_width(DockSide::Right, 0, 500.0);
-        // Window too narrow -> capped by the 0.45 fraction, not DOCK_MAX_W.
+        // Window too narrow -> capped by the 0.75 fraction, not DOCK_MAX_W.
         assert_eq!(
-            state.group_width_px(DockSide::Right, 0, 800.0),
-            DOCK_MAX_W.min(360.0)
+            state.group_width_px(DockSide::Right, 0, 600.0),
+            DOCK_MAX_W.min(450.0)
         );
     }
 

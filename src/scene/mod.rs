@@ -83,6 +83,7 @@ mod project;
 pub mod reference_only;
 mod scene_markers;
 mod selection;
+pub use selection::SELECT_SIMILAR_DEFAULT;
 pub mod viewport_dimension_pick;
 pub mod viewport_ref;
 pub(crate) use selection::pe_url_of;
@@ -92,7 +93,7 @@ mod parametric_solve;
 pub(crate) use boundary::{
     boundary_entities, boundary_entities_from_sources, boundary_faces, boundary_faces_around,
     boundary_polyline_entities, entity_boundary_source_on_plane, exact_hatch_paths,
-    hatch_boundary_rings, hatch_path_directions, hatch_path_ring, live_segments_for_curves,
+    hatch_boundary_rings, hatch_path_ring, live_segments_for_curves,
     remap_hatch_associations, ring_source_handles, separated_hatch_path_groups, sources_near_rings,
     BoundarySource,
 };
@@ -2546,6 +2547,8 @@ pub struct Scene {
     pub selection_effect: bool,
     /// Extra screen pixels the selection highlight is drawn wider.
     pub selection_widen: f32,
+    /// VSEDGECOLOR: edge colour of the shaded-with-edges modes (`None`: black).
+    pub edge_color: Option<[u8; 3]>,
     /// Whether entity transparency is honoured on screen. When false the
     /// wire shader forces every line opaque (a uniform toggle, no retessellate).
     pub transparency_display: bool,
@@ -2896,6 +2899,10 @@ pub struct Scene {
     pub(crate) has_underlays: std::cell::Cell<Option<bool>>,
     /// Conservative hint for whether any Face3D entities exist in the document.
     pub(crate) has_face3d: std::cell::Cell<Option<bool>>,
+    /// Whether the current space holds objects the drawing saves as invisible,
+    /// keyed by `(geometry_epoch, space block)`. Read every frame by the
+    /// isolation menus, so the entity scan runs once per edit, not per frame.
+    persisted_hidden_cache: std::cell::Cell<Option<(u64, Handle, bool)>>,
     /// Cached resolved document render environment (fog and background image), keyed by (geometry_epoch, document.objects.len()).
     document_render_env_cache: RefCell<
         Option<(
@@ -3221,6 +3228,7 @@ impl Scene {
             constraint_hover_wires: Vec::new(),
             selection_color: crate::scene::model::wire_model::WireModel::SELECTED,
             selection_widen: 0.0,
+            edge_color: None,
             selection_effect: true,
             transparency_display: true,
             model_lineweight_scale: 1.0,
@@ -3333,6 +3341,7 @@ impl Scene {
             has_dimension_associations: std::cell::Cell::new(None),
             has_underlays: std::cell::Cell::new(None),
             has_face3d: std::cell::Cell::new(None),
+            persisted_hidden_cache: std::cell::Cell::new(None),
             document_render_env_cache: RefCell::new(None),
             background_image_cache: RefCell::new(HashMap::default()),
             block_defn_cache: RefCell::new(HashMap::default()),
@@ -4278,6 +4287,29 @@ impl Scene {
                         Some(EntityType::Table(t)) if t.block_record_handle.is_none()
                     )
                 {
+                    // Cell edits request this rebuild by dropping the handle.
+                    // The codec then refills the block by name: drop the name
+                    // too when another table still uses that block.
+                    let name = match self.document.get_entity(*handle) {
+                        Some(EntityType::Table(t)) => t.block_name.clone(),
+                        _ => String::new(),
+                    };
+                    let shared = !name.is_empty()
+                        && self.document.entities().any(|e| {
+                            e.common().handle != *handle
+                                && matches!(e, EntityType::Table(o)
+                                    if o.block_name.eq_ignore_ascii_case(&name))
+                        });
+                    if shared {
+                        if let Some(EntityType::Table(t)) = self.document.get_entity_mut(*handle) {
+                            t.block_name.clear();
+                        }
+                    }
+                    // A fresh picture adds block records and entities outside
+                    // the table's entity delta; undo needs the full snapshot.
+                    if name.is_empty() || shared {
+                        self.poison_undo_recording();
+                    }
                     rebuilt |= self.document.refresh_table_block(*handle);
                     rebuilt |= !crate::entities::field::refresh_table_formulas(
                         &mut self.document,
@@ -4316,6 +4348,8 @@ impl Scene {
             let refreshed = self.refresh_associative_sweeps(&changes);
             Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             let refreshed = self.refresh_associative_surfaces(&changes);
+            Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
+            let refreshed = self.refresh_associative_path_arrays(&changes);
             Self::absorb_refreshed(&mut changes, &mut refreshed_handles, refreshed);
             if solve_parametric && !self.parametric_constraints.is_empty() {
                 let refreshed = self.refresh_parametric_constraints_with_initial_policy(
@@ -6894,7 +6928,7 @@ impl Scene {
     }
 
     /// List of user viewports in the current layout: (handle, label, frozen_layer_handles).
-    pub fn viewport_list(&self) -> Vec<(codec::Handle, String, Vec<codec::Handle>)> {
+    pub fn viewport_list(&self) -> Vec<crate::ui::window::layers::ViewportLayers> {
         if self.current_layout == "Model" {
             return vec![];
         }
@@ -6924,6 +6958,37 @@ impl Scene {
             .collect();
         result.sort_by_key(|(_, label, _)| label.clone());
         result
+            .into_iter()
+            .map(|(handle, label, frozen)| {
+                let colors = self
+                    .document
+                    .layers
+                    .iter()
+                    .filter_map(|layer| {
+                        self.document
+                            .layer_viewport_overrides(
+                                layer.handle,
+                                codec::objects::KnownXRecordKind::LayerViewportColorOverride,
+                            )
+                            .into_iter()
+                            .find(|(viewport, _)| *viewport == handle)
+                            .and_then(|(_, value)| match value {
+                                codec::objects::XRecordValue::Int32(value) => Some((
+                                    layer.handle,
+                                    crate::scene::view::render::layer_override_color(value),
+                                )),
+                                _ => None,
+                            })
+                    })
+                    .collect();
+                crate::ui::window::layers::ViewportLayers {
+                    handle,
+                    label,
+                    frozen,
+                    colors,
+                }
+            })
+            .collect()
     }
 
     /// Count of user viewports (id > 1) in the current layout.
@@ -7152,6 +7217,79 @@ impl Scene {
         if !changes.is_empty() {
             self.bump_entities(&changes);
         }
+    }
+
+    /// Top-level objects of the current space that the drawing itself saves
+    /// as invisible (`EntityCommon::invisible`, DXF 60) — e.g. objects another
+    /// CAD program hid with HIDEOBJECTS and wrote to the file. Only objects
+    /// owned by the space count: inside block definitions (and in the block
+    /// editor) the flag drives dynamic-block visibility states.
+    pub fn persisted_hidden_objects(&self) -> Vec<Handle> {
+        if self.block_edit_block.is_some() {
+            return Vec::new();
+        }
+        let space = self.interaction_block_handle();
+        if space.is_null() {
+            return Vec::new();
+        }
+        self.document
+            .entities()
+            .filter(|entity| {
+                let common = entity.common();
+                common.invisible
+                    && !common.handle.is_null()
+                    && self.belongs_to_visible_block(common.handle, common.owner_handle, space)
+            })
+            .map(|entity| entity.common().handle)
+            .collect()
+    }
+
+    /// True when UNISOLATEOBJECTS has something to show: a session filter
+    /// from ISOLATEOBJECTS / HIDEOBJECTS, or objects saved as invisible in
+    /// the current space.
+    pub fn has_hidden_objects(&self) -> bool {
+        if self.object_isolation.is_active() {
+            return true;
+        }
+        let space = if self.block_edit_block.is_some() {
+            Handle::NULL
+        } else {
+            self.interaction_block_handle()
+        };
+        if let Some((epoch, cached_space, any)) = self.persisted_hidden_cache.get() {
+            if epoch == self.geometry_epoch && cached_space == space {
+                return any;
+            }
+        }
+        let any = !self.persisted_hidden_objects().is_empty();
+        self.persisted_hidden_cache
+            .set(Some((self.geometry_epoch, space, any)));
+        any
+    }
+
+    /// Clear the saved invisible flag of every object
+    /// [`Self::persisted_hidden_objects`] reports. Returns each changed
+    /// object's previous state for undo.
+    pub fn show_persisted_hidden_objects(&mut self) -> Vec<(Handle, Arc<EntityType>)> {
+        let mut originals = Vec::new();
+        for handle in self.persisted_hidden_objects() {
+            let Some(original) = self.document.get_entity_arc(handle) else {
+                continue;
+            };
+            if let Some(entity) = self.document.get_entity_mut(handle) {
+                entity.common_mut().invisible = false;
+                originals.push((handle, original));
+            }
+        }
+        let changes: Vec<_> = originals
+            .iter()
+            .map(|(handle, _)| (*handle, ChangeKind::Modified))
+            .collect();
+        if !changes.is_empty() {
+            self.bump_constraints_epoch();
+            self.bump_entities(&changes);
+        }
+        originals
     }
 
     /// A newly opened/replaced document starts with no session visibility.
@@ -9385,7 +9523,7 @@ impl Scene {
         })
     }
 
-    fn interaction_block_handle(&self) -> Handle {
+    pub(crate) fn interaction_block_handle(&self) -> Handle {
         if self.block_edit_block.is_none() && self.active_viewport.is_some() {
             self.model_space_block_handle()
         } else {
@@ -9746,6 +9884,26 @@ impl Scene {
             live_section.as_ref(),
         ));
         all
+    }
+
+    /// The planes a live section keeps the positive side of, in model space,
+    /// as `[nx, ny, nz, d]` with `n·p + d >= 0` kept: what point clouds are
+    /// clipped by, as solids are cut.
+    pub(crate) fn live_section_clip_planes(&self) -> Vec<[f64; 4]> {
+        let Some(section) = self.active_live_section(self.model_space_block_handle()) else {
+            return Vec::new();
+        };
+        Self::section_planes(&section.data, section.slice_depth, None)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|plane| {
+                let normal = glam::DVec3::from(plane.normal()?).normalize_or_zero();
+                (normal != glam::DVec3::ZERO).then(|| {
+                    let d = -normal.dot(glam::DVec3::from(plane.origin));
+                    [normal.x, normal.y, normal.z, d]
+                })
+            })
+            .collect()
     }
 
     fn active_live_section(&self, target_block: Handle) -> Option<LiveSection> {
@@ -14161,23 +14319,32 @@ vis_index={:.1} visible_probe={:.1}",
                 }
                 let mut cache = self.entity_index_cache.borrow_mut();
                 if let Some((epoch, idx)) = cache.as_mut() {
-                    for op in ops {
-                        match op {
+                    // replay_since coalesces to one entry per handle, so each
+                    // touched handle appears in exactly one op: sweep the
+                    // unbounded list once for the whole batch instead of one
+                    // retain per op (O(ops x handles) on point-heavy drawings).
+                    let mut touched: HashSet<Handle> = HashSet::default();
+                    let mut unbounded_pushes: Vec<Handle> = Vec::new();
+                    for op in &ops {
+                        match *op {
                             IdxOp::Remove(h) => {
                                 idx.tree.remove(h);
-                                idx.unbounded_handles.retain(|x| *x != h);
+                                touched.insert(h);
                             }
                             IdxOp::SetBounded(h, ab) => {
                                 idx.tree.update(h, ab);
-                                idx.unbounded_handles.retain(|x| *x != h);
+                                touched.insert(h);
                             }
                             IdxOp::SetUnbounded(h) => {
                                 idx.tree.remove(h);
-                                idx.unbounded_handles.retain(|x| *x != h);
-                                idx.unbounded_handles.push(h);
+                                touched.insert(h);
+                                unbounded_pushes.push(h);
                             }
                         }
                     }
+                    idx.unbounded_handles
+                        .retain(|x| !touched.contains(x));
+                    idx.unbounded_handles.extend(unbounded_pushes);
                     *epoch = self.geometry_epoch;
                     drop(cache);
                     return std::cell::Ref::map(self.entity_index_cache.borrow(), |c| {
@@ -14660,6 +14827,14 @@ pub(crate) fn drop_layout_viewports(document: &mut codec::Document, block: Handl
 /// LAYOUTCREATEVIEWPORT: a layout opened for the first time gets a viewport.
 static LAYOUT_CREATE_VIEWPORT: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(true);
+
+/// A selection box drawn right to left on the screen is a crossing, left to
+/// right a window — for a dragged box and for two typed corners alike. A box
+/// with no width on the screen (its corners within half a pixel across) is a
+/// crossing too, as in the reference.
+pub fn selection_box_crossing(anchor: iced::Point, current: iced::Point) -> bool {
+    current.x < anchor.x + 0.5
+}
 
 pub fn layout_create_viewport() -> bool {
     LAYOUT_CREATE_VIEWPORT.load(std::sync::atomic::Ordering::Relaxed)
@@ -16259,12 +16434,17 @@ mod delta_undo_tests {
             rec.into_recorded_images();
         assert_eq!(entities.len(), 1);
         assert_eq!(entities[0].0, handle);
-        assert_eq!(objects.len(), 1);
-        assert!(objects[0].1.is_none());
-        assert!(matches!(
-            scene.document.objects.get(&objects[0].0),
+        // The image's own graph: ACAD_IMAGE_DICT, the definition and the image's
+        // reactor are new; the named object dictionary gains the entry.
+        assert_eq!(objects.len(), 4);
+        let root = scene.document.header.named_objects_dict_handle;
+        for (h, before) in &objects {
+            assert_eq!(before.is_some(), *h == root, "{h:?}");
+        }
+        assert!(objects.iter().any(|(h, _)| matches!(
+            scene.document.objects.get(h),
             Some(ObjectType::ImageDefinition(_))
-        ));
+        )));
     }
 
     #[test]

@@ -174,6 +174,14 @@ impl super::OpenCADStudio {
             self.open_attdef_edit(target);
             return iced::Task::none();
         }
+        // A text that is one field, as FIELD makes it, edits that field.
+        if matches!(
+            self.tabs[i].scene.document.get_entity(target),
+            Some(EntityType::MText(_) | EntityType::Text(_))
+        ) && self.open_field_edit(target)
+        {
+            return iced::Task::none();
+        }
         // Snapshot what we need before borrowing `self` mutably to open.
         let Some(entity) = self.tabs[i].scene.document.get_entity(target) else {
             return iced::Task::none();

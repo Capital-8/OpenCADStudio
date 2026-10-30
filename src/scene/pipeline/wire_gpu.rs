@@ -649,7 +649,7 @@ fn wire_distances(wire: &WireModel) -> (Vec<f32>, f32, f32) {
             // Shorter than one full period → solid (matches the per-wire path).
             return (dists, total, total);
         }
-        return (dists, ae.clamp(1e-4, total * 0.5), total);
+        return (dists, ae.max(1e-4).min(total * 0.5), total);
     }
 
     // Align only a proper alternating pattern that BEGINS with a dash followed
@@ -679,7 +679,7 @@ fn wire_distances(wire: &WireModel) -> (Vec<f32>, f32, f32) {
             k = (k - 1.0).max(0.0);
             d_end = (total - k * p + a) * 0.5;
         }
-        let d_end = d_end.clamp(1e-4, total * 0.5);
+        let d_end = d_end.max(1e-4).min(total * 0.5);
         return (dists, d_end, total);
     }
 

@@ -172,6 +172,7 @@ pub(crate) fn to_render_at_scale(
                 oblique: p.oblique_angle,
                 tracking: 1.0,
                 bold: false,
+                aci: None,
             }),
         }]),
         snap_pts: vec![(snap_pt, SnapHint::Insertion)],

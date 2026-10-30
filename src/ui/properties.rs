@@ -843,6 +843,10 @@ impl PropertiesPanel {
         })
         .width(Length::Fill)
         .padding([4, 10]);
+        // The title bar moves the panel.
+        let title = iced::widget::mouse_area(title)
+            .on_press(Message::QuickPropertiesGrab)
+            .interaction(iced::mouse::Interaction::Grab);
 
         let mut sections = column![].spacing(0);
         self.rendering_quick.set(true);
@@ -1942,7 +1946,7 @@ fn coord_suffix(label: &str) -> Option<(&str, usize)> {
 
 /// Length of the coordinate group starting at `idx`: consecutive text rows
 /// labelled "<Base> X", "<Base> Y" and optionally "<Base> Z". 0/1 = no group.
-fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) -> usize {
+pub(crate) fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) -> usize {
     if matches!(props[idx].field, "pl3_vertex_x" | "pm_vx") {
         return 0;
     }
@@ -1972,12 +1976,12 @@ fn coord_group_len(props: &[crate::scene::model::object::Property], idx: usize) 
     }
 }
 
-fn coord_base(label: &str) -> &str {
+pub(crate) fn coord_base(label: &str) -> &str {
     coord_suffix(label).map(|(b, _)| b).unwrap_or(label)
 }
 
 /// Short component label for an expanded row ("Position X" → indented "X").
-fn coord_component(label: &str) -> &'static str {
+pub(crate) fn coord_component(label: &str) -> &'static str {
     match coord_suffix(label) {
         Some((_, 0)) => "    X",
         Some((_, 1)) => "    Y",
@@ -2359,6 +2363,14 @@ fn prop_row_with_active<'a>(
 
 // ── Color display helper ──────────────────────────────────────────────────
 
+/// Whether the drawing canvas is light, so colour 7 (white on a dark
+/// canvas) shows black in swatches as it does in the drawing.
+static LIGHT_CANVAS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn set_light_canvas(light: bool) {
+    LIGHT_CANVAS.store(light, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Returns an (iced::Color swatch_bg, display_label) pair for an AcadColor.
 pub fn acad_color_display(c: AcadColor) -> (Color, &'static str) {
     match c {
@@ -2381,6 +2393,9 @@ pub fn acad_color_display(c: AcadColor) -> (Color, &'static str) {
             },
             "ByBlock",
         ),
+        AcadColor::Index(7) if LIGHT_CANVAS.load(std::sync::atomic::Ordering::Relaxed) => {
+            (Color::BLACK, aci_label(7))
+        }
         AcadColor::Index(i) => {
             let (r, g, b) = codec::types::aci_table::aci_to_rgb(i).unwrap_or((200, 200, 200));
             (

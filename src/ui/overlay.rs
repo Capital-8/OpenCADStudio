@@ -20,6 +20,7 @@ use std::sync::Arc;
 /// Original crosshair geometry retained at the default setting values.
 pub const CROSSHAIR_SQ: f32 = 7.5;
 pub const CROSSHAIR_ARM: f32 = 60.0;
+pub(crate) const TRACKING_DASH_PX: [f32; 2] = [6.0, 4.0];
 const DEFAULT_CURSOR_SIZE: i32 = 5;
 const DEFAULT_PICK_BOX: i32 = 3;
 const DEFAULT_PICK_APERTURE: f32 = 8.0;
@@ -2918,7 +2919,7 @@ impl canvas::Program<Message> for SelectionCanvas {
                 let p1 = Point::new(tip.x + ux * L, tip.y + uy * L);
                 let dash = canvas::Stroke {
                     line_dash: canvas::LineDash {
-                        segments: &[6.0, 4.0],
+                        segments: &TRACKING_DASH_PX,
                         offset: 0,
                     },
                     ..canvas::Stroke::default()

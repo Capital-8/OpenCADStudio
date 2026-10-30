@@ -538,45 +538,13 @@ impl OpenCADStudio {
             }
 
             "DIMCONTINUE" => {
-                use crate::modules::annotate::dim_continue::DimContinueCommand;
-                let scene = &self.tabs[i].scene;
-                let recent = scene
-                    .last_created_dimension
-                    .filter(|handle| scene.entity_belongs_to_active_space(*handle))
-                    .and_then(|handle| scene.document.get_entity(handle))
-                    .cloned();
-                let cmd = DimContinueCommand::new(recent, self.dimension_continue_mode == 1);
+                let cmd = self.dim_continue_command(i, false);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
 
             "DIMBASELINE" => {
-                use crate::modules::annotate::dim_baseline::DimBaselineCommand;
-                let scene = &self.tabs[i].scene;
-                let recent = scene
-                    .last_created_dimension
-                    .filter(|handle| scene.entity_belongs_to_active_space(*handle))
-                    .and_then(|handle| scene.document.get_entity(handle))
-                    .cloned();
-                let dimdli_by_style = scene
-                    .document
-                    .dim_styles
-                    .iter()
-                    .map(|style| (style.name.to_ascii_lowercase(), style.dimdli))
-                    .collect();
-                let fallback_dimdli = if scene.document.header.measurement == 1 {
-                    3.75
-                } else {
-                    0.38
-                };
-                let current_style_name = scene.document.header.current_dimstyle_name.clone();
-                let cmd = DimBaselineCommand::new(
-                    recent,
-                    dimdli_by_style,
-                    current_style_name,
-                    fallback_dimdli,
-                    self.dimension_continue_mode == 1,
-                );
+                let cmd = self.dim_baseline_command(i, false);
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
@@ -678,7 +646,13 @@ impl OpenCADStudio {
                     "AIMLEADEREDITREMOVE" => "AIMLEADEREDITREMOVE",
                     _ => "MLEADEREDIT",
                 };
-                let cmd = MLeaderEditCommand::new(name);
+                let mut cmd = MLeaderEditCommand::new(name);
+                // A single preselected multileader is the one edited.
+                let selected = self.tabs[i].scene.selected_entities();
+                if let [(handle, codec::EntityType::MultiLeader(ml))] = selected.as_slice() {
+                    cmd = cmd.with_target(*handle, (**ml).clone());
+                    self.tabs[i].scene.replace_selection(Default::default());
+                }
                 self.command_line.push_info(&cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
             }
@@ -1105,7 +1079,7 @@ impl OpenCADStudio {
 
             "EXPLODE" => {
                 use crate::modules::draw::modify::explode::{
-                    apply_explode_replacements, plan_explode,
+                    apply_explode_replacements, plan_explode_in_context,
                 };
                 let selected: Vec<_> = self.tabs[i]
                     .scene
@@ -1145,7 +1119,11 @@ impl OpenCADStudio {
                         } else {
                             selected
                         };
-                    let replacements = plan_explode(&selected, &self.tabs[i].scene.document);
+                    let replacements = plan_explode_in_context(
+                        &selected,
+                        &self.tabs[i].scene.document,
+                        self.tabs[i].scene.displayed_annotation_scale_handle(),
+                    );
                     let exploded = replacements.len();
                     if exploded > 0 {
                         self.push_undo_snapshot(i, "EXPLODE");
@@ -1411,7 +1389,51 @@ impl OpenCADStudio {
 
             "DIMOVERRIDE" => {
                 use crate::modules::annotate::dimoverride::DimOverrideCommand;
-                let cmd = DimOverrideCommand::new();
+                let document = &self.tabs[i].scene.document;
+                let style = document
+                    .dim_styles
+                    .iter()
+                    .find(|style| {
+                        style
+                            .name
+                            .eq_ignore_ascii_case(&document.header.current_dimstyle_name)
+                    })
+                    .cloned();
+                let named = crate::modules::annotate::dimoverride::NamedValues {
+                    defaults: style
+                        .as_ref()
+                        .map(|style| {
+                            let block = |handle: codec::Handle| {
+                                document
+                                    .block_records
+                                    .iter()
+                                    .find(|record| !handle.is_null() && record.handle == handle)
+                                    .map_or_else(
+                                        || "ClosedFilled".to_string(),
+                                        |record| record.name.clone(),
+                                    )
+                            };
+                            vec![
+                                ("DIMBLK".to_string(), block(style.dimblk)),
+                                ("DIMBLK1".to_string(), block(style.dimblk1)),
+                                ("DIMBLK2".to_string(), block(style.dimblk2)),
+                                ("DIMLDRBLK".to_string(), block(style.dimldrblk)),
+                                ("DIMTXSTY".to_string(), style.dimtxsty.clone()),
+                            ]
+                        })
+                        .unwrap_or_default(),
+                    blocks: document
+                        .block_records
+                        .iter()
+                        .map(|record| record.name.clone())
+                        .collect(),
+                    text_styles: document
+                        .text_styles
+                        .iter()
+                        .map(|style| style.name.clone())
+                        .collect(),
+                };
+                let cmd = DimOverrideCommand::new(style, named);
                 self.command_line.push_info(&cmd.prompt());
                 self.command_line.set_step_options(cmd.options());
                 self.tabs[i].active_cmd = Some(Box::new(cmd));
@@ -1419,11 +1441,61 @@ impl OpenCADStudio {
 
             cmd if cmd.starts_with("DIMOVERRIDE_APPLY ") => {
                 let spec = cmd.trim_start_matches("DIMOVERRIDE_APPLY ").trim();
+                // Arrowhead blocks and the text style are written as handles,
+                // resolved (a standard arrowhead's block made) once here.
+                use crate::modules::annotate::dimoverride::NAMED_VALUE_VARS;
+                let mut handle_values = Vec::new();
+                let spec: String = spec
+                    .split(';')
+                    .filter(|entry| {
+                        let (name, value) = entry.split_once('=').unwrap_or((entry, ""));
+                        let name = name.trim().to_ascii_uppercase();
+                        if !NAMED_VALUE_VARS.contains(&name.as_str()) {
+                            return true;
+                        }
+                        handle_values.push((name, value.trim().to_string()));
+                        false
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                let spec = spec.as_str();
+                let mut resolved_handles = Vec::new();
+                for (name, value) in handle_values {
+                    use crate::entities::dim_override as dov;
+                    let doc = &mut self.tabs[i].scene.document;
+                    let (code, handle) = if name == "DIMTXSTY" {
+                        let found = doc
+                            .text_styles
+                            .iter()
+                            .find(|style| style.name.eq_ignore_ascii_case(&value))
+                            .map(|style| style.handle);
+                        (dov::DIMTXSTY, found)
+                    } else {
+                        let code = match name.as_str() {
+                            "DIMBLK" => dov::DIMBLK,
+                            "DIMBLK1" => dov::DIMBLK1,
+                            "DIMBLK2" => dov::DIMBLK2,
+                            _ => dov::DIMLDRBLK,
+                        };
+                        let block = crate::entities::arrowheads::typed_standard_block(&value)
+                            .map(str::to_string)
+                            .unwrap_or(value.clone());
+                        (code, crate::entities::arrowheads::resolve(doc, &block))
+                    };
+                    if let Some(handle) = handle {
+                        resolved_handles.push((code, codec::xdata::XDataValue::Handle(handle)));
+                    }
+                }
                 let values = if spec.eq_ignore_ascii_case("CLEAR") {
                     Vec::new()
+                } else if spec.trim().is_empty() {
+                    resolved_handles.clone()
                 } else {
                     match crate::modules::annotate::dimoverride::parse_spec(spec) {
-                        Ok(values) if !values.is_empty() => values,
+                        Ok(mut values) if !values.is_empty() || !resolved_handles.is_empty() => {
+                            values.extend(resolved_handles.iter().cloned());
+                            values
+                        }
                         Ok(_) => return Some(self.finish_dispatch(cmd)),
                         Err(entry) => {
                             self.command_line.push_error(
@@ -1494,6 +1566,33 @@ impl OpenCADStudio {
                 return Some(self.dispatch_command("DIMREASSOCIATE"));
             }
 
+            // DIMREGEN: every dimension draws its picture afresh, and the
+            // next save writes the new pictures.
+            "DIMREGEN" => {
+                let handles: Vec<_> = self.tabs[i]
+                    .scene
+                    .document
+                    .entities()
+                    .filter(|entity| {
+                        matches!(entity, codec::EntityType::Dimension(d)
+                            if !d.base().block_name.is_empty())
+                    })
+                    .map(|entity| entity.common().handle)
+                    .collect();
+                if !handles.is_empty() {
+                    self.push_undo_snapshot(i, "DIMREGEN");
+                    for &handle in &handles {
+                        self.tabs[i].scene.invalidate_dim_block_recorded(handle);
+                    }
+                    let changes: Vec<_> = handles
+                        .iter()
+                        .map(|&handle| (handle, crate::scene::ChangeKind::Modified))
+                        .collect();
+                    self.tabs[i].scene.bump_entities(&changes);
+                    self.tabs[i].dirty = true;
+                }
+            }
+
             "DIMDISASSOCIATE" | "DIMREASSOCIATE" => {
                 let handles = self.selected_editable_dimensions(i);
                 if handles.is_empty() {
@@ -1528,50 +1627,61 @@ impl OpenCADStudio {
                     self.command_line
                         .push_output(crate::tf!("{count} disassociated.").as_ref());
                 } else {
-                    self.push_undo_snapshot(i, "DIMREASSOCIATE");
-                    let (mut count, mut partial) = (0, 0);
-                    for &handle in &handles {
-                        let scene = &mut self.tabs[i].scene;
-                        let owner_of = |handle: codec::Handle| {
-                            scene.document.get_entity(handle).map(|e| e.common().owner_handle)
-                        };
-                        // Only geometry in the dimension's own space may anchor it.
-                        let owner = owner_of(handle);
-                        let sources: Vec<_> = scene
-                            .infer_dimension_sources(handle)
-                            .into_iter()
-                            .map(|source| source.filter(|source| owner_of(*source) == owner))
-                            .collect();
-                        if sources.iter().all(Option::is_none) {
-                            continue;
-                        }
-                        let complete = sources.iter().all(Option::is_some);
-                        scene.detach_dimension_association(handle);
-                        scene.attach_dimension_association(handle, sources);
-                        if scene.dimension_association(handle).is_some() {
-                            if complete {
-                                count += 1;
-                            } else {
-                                partial += 1;
-                            }
-                        }
-                    }
-                    self.invalidate_property_targets(i, &handles);
-                    self.tabs[i].dirty |= count + partial > 0;
-                    self.command_line.push_output(
-                        crate::tf!(
-                            "DIMREASSOCIATE: {count} of {} dimension(s) associated.",
-                            handles.len()
-                        )
-                        .as_ref(),
-                    );
-                    if partial > 0 {
-                        self.command_line.push_output(
-                            crate::tf!(
-                                "DIMREASSOCIATE: {partial} dimension(s) only partially associated (no object at some definition points)."
-                            )
-                            .as_ref(),
-                        );
+                    // Each dimension's definition points are asked in turn.
+                    use crate::modules::annotate::dimreassociate::{
+                        DimReassociateCommand, ReassociateKind,
+                    };
+                    let scene = &self.tabs[i].scene;
+                    let v = |p: codec::types::Vector3| glam::DVec3::new(p.x, p.y, p.z);
+                    let (items, points): (Vec<_>, Vec<_>) = handles
+                        .iter()
+                        .filter_map(|&handle| {
+                            let dimension = scene
+                                .document
+                                .get_entity(handle)
+                                .and_then(crate::entities::dimension::as_dimension)?;
+                            let points = match dimension {
+                                codec::entities::Dimension::Linear(d) => {
+                                    vec![v(d.first_point), v(d.second_point)]
+                                }
+                                codec::entities::Dimension::Aligned(d) => {
+                                    vec![v(d.first_point), v(d.second_point)]
+                                }
+                                codec::entities::Dimension::Angular3Pt(d) => {
+                                    vec![v(d.angle_vertex), v(d.first_point), v(d.second_point)]
+                                }
+                                codec::entities::Dimension::Ordinate(d) => {
+                                    vec![v(d.feature_location)]
+                                }
+                                _ => Vec::new(),
+                            };
+                            let kind = match dimension {
+                                codec::entities::Dimension::Linear(_)
+                                | codec::entities::Dimension::Aligned(_) => ReassociateKind::Linear,
+                                codec::entities::Dimension::Angular3Pt(_) => {
+                                    ReassociateKind::Angular3
+                                }
+                                codec::entities::Dimension::Angular2Ln(_) => {
+                                    ReassociateKind::Angular2
+                                }
+                                codec::entities::Dimension::Radius(_)
+                                | codec::entities::Dimension::Diameter(_) => {
+                                    ReassociateKind::Radial
+                                }
+                                codec::entities::Dimension::Ordinate(_) => {
+                                    ReassociateKind::Ordinate
+                                }
+                                _ => return None,
+                            };
+                            Some(((handle, kind), points))
+                        })
+                        .unzip();
+                    self.tabs[i].scene.deselect_all();
+                    if !items.is_empty() {
+                        let command = DimReassociateCommand::new(items, points);
+                        self.command_line.push_info(&command.prompt());
+                        self.command_line.set_step_options(command.options());
+                        self.tabs[i].active_cmd = Some(Box::new(command));
                     }
                 }
             }

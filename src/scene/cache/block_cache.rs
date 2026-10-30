@@ -3128,6 +3128,7 @@ fn emit_wire(
                 uv: tv.uv,
                 color: [rgb[0], rgb[1], rgb[2], final_color[3]],
                 draw_depth: tv.draw_depth,
+                pen: tv.pen,
             });
     }
     // Searchable runs follow the same insert transform: origin via the full
@@ -3345,6 +3346,7 @@ mod bg_resolution_tests {
             uv: [0.0; 2],
             color,
             draw_depth: 0.0,
+            pen: 0.0,
         }];
         e
     }

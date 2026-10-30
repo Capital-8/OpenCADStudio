@@ -830,6 +830,8 @@ impl OpenCADStudio {
             show_ucs_icon: self.show_ucs_icon,
             ucs_icon_at_origin: self.ucs_icon_at_origin,
             selection_cycling: self.selection_cycling,
+            osnap_z: self.osnap_z,
+            select_similar_mode: self.select_similar_mode,
             double_click_block_refedit: self.double_click_block_refedit,
             double_click_block_attedit: self.double_click_block_attedit,
             right_click_mode: self.right_click_mode,
@@ -858,6 +860,8 @@ impl OpenCADStudio {
             fonts_folder: crate::io::font_repo::fonts_folder().map(|p| p.display().to_string()),
             #[cfg(not(target_arch = "wasm32"))]
             plot_styles_folder: crate::io::plot_style::plot_styles_folder()
+                .map(|p| p.display().to_string()),
+            support_folder: crate::io::font_repo::support_folder()
                 .map(|p| p.display().to_string()),
             #[cfg(target_arch = "wasm32")]
             fonts_folder: None,
@@ -920,6 +924,8 @@ impl OpenCADStudio {
             pick_add: self.pick_add,
             pick_drag_rect: self.pick_drag_rect,
             quick_properties: self.quick_properties,
+            quick_properties_float: self.quick_properties_float,
+            quick_properties_pos: [self.quick_properties_pos.x, self.quick_properties_pos.y],
             language: self.language,
             cliprompt_lines: crate::app::settings::clamp_clipromptlines(self.cliprompt_lines),
             command_line_opacity: self.command_line.opacity_percent(),
@@ -997,6 +1003,8 @@ impl OpenCADStudio {
         self.show_ucs_icon = s.show_ucs_icon;
         self.ucs_icon_at_origin = s.ucs_icon_at_origin;
         self.selection_cycling = s.selection_cycling;
+        self.osnap_z = s.osnap_z;
+        self.select_similar_mode = s.select_similar_mode & 255;
         self.double_click_block_refedit = s.double_click_block_refedit;
         self.double_click_block_attedit = s.double_click_block_attedit;
         self.right_click_mode = s.right_click_mode;
@@ -1029,6 +1037,7 @@ impl OpenCADStudio {
             crate::io::plot_style::set_plot_styles_folder(
                 s.plot_styles_folder.as_ref().map(Into::into),
             );
+            crate::io::font_repo::set_support_folder(s.support_folder.as_ref().map(Into::into));
         }
         crate::sys::set_attach_filter(s.attach_filter);
         crate::scene::model::sweep_model::set_surface_associativity(s.surface_associativity);
@@ -1118,6 +1127,11 @@ impl OpenCADStudio {
         self.pick_add = s.pick_add;
         self.pick_drag_rect = s.pick_drag_rect;
         self.quick_properties = s.quick_properties;
+        self.quick_properties_float = s.quick_properties_float;
+        self.quick_properties_pos = iced::Point::new(
+            s.quick_properties_pos[0].max(0.0),
+            s.quick_properties_pos[1].max(0.0),
+        );
         if crate::i18n::set_language(s.language).is_ok() {
             self.language = s.language;
         }
@@ -1354,8 +1368,20 @@ impl OpenCADStudio {
         // Refresh the command-line autocomplete pool so a newly enabled plugin's
         // commands become typeable (and a disabled one's drop out). This runs on
         // startup load, settings reload, and every enable/disable toggle (#272).
-        self.command_line.dynamic_commands =
-            crate::plugin::plugin_command_names(&self.disabled_plugins);
+        let mut cmds = crate::plugin::plugin_command_names(&self.disabled_plugins);
+        for state in self.plugin_panels.values() {
+            if let Some(ref c) = state.def.command {
+                let cu = c.to_uppercase();
+                if !cmds.contains(&cu) {
+                    cmds.push(cu);
+                }
+            }
+            let id_u = state.def.id.to_uppercase();
+            if !cmds.contains(&id_u) {
+                cmds.push(id_u);
+            }
+        }
+        self.command_line.dynamic_commands = cmds;
     }
 
     /// Snapshot of disabled plugin ids — lets the registry skip them while it
@@ -1554,6 +1580,14 @@ impl OpenCADStudio {
         self.shortcut_bindings
             .entry("SHIFT+TAB".to_string())
             .or_insert_with(|| "DYNTABPREV".to_string());
+        self.shortcut_bindings
+            .entry(if cfg!(target_os = "macos") { "CMD+R" } else { "CTRL+R" }.to_string())
+            .or_insert_with(|| "NEXTVIEWPORT".to_string());
+        for (key, action) in crate::app::shortcuts::PLATFORM_BINDINGS {
+            self.shortcut_bindings
+                .entry(key.to_string())
+                .or_insert_with(|| action.to_string());
+        }
         crate::app::shortcuts::sync_space_dispatch_flag(&self.shortcut_bindings);
     }
 
@@ -1599,6 +1633,7 @@ impl OpenCADStudio {
             tab.scene.selection_color = sel_color;
             tab.scene.selection_effect = sel_effect;
             let old_sel_widen = std::mem::replace(&mut tab.scene.selection_widen, sel_widen);
+            tab.scene.edge_color = self.model_space.edge_color;
             tab.bg_color = Some(model_bg);
             tab.paper_bg_color = Some(paper_bg);
 
@@ -4058,6 +4093,15 @@ impl OpenCADStudio {
             return Task::none();
         }
         let i = self.active_tab;
+        // DXEVAL: a save may first offer (or make) outdated extraction
+        // table updates.
+        if let Some(task) = self.evaluate_extraction_tables(
+            i,
+            crate::app::commands::extraction_eval::EVENT_SAVE,
+            Some(Message::SaveFile),
+        ) {
+            return task;
+        }
         // Web serializes immediately below. Native preparation happens
         // once after the destination/version is known.
         #[cfg(target_arch = "wasm32")]
@@ -5387,6 +5431,7 @@ impl OpenCADStudio {
             return Task::none();
         };
         let worker_path = path.clone();
+        let open_when_done = self.plot_dialog.open_when_done;
         let work = move || {
             // SVG shares the plot page with PDF: pick the writer from the
             // chosen extension.
@@ -5398,6 +5443,10 @@ impl OpenCADStudio {
             } else {
                 crate::io::pdf_export::export_pdf(&page, &worker_path)
             };
+            if result.is_ok() && open_when_done {
+                // A viewer that cannot start leaves the file written all the same.
+                let _ = crate::io::print_to_printer::open_in_viewer(&worker_path);
+            }
             result
                 .map(|_| crate::tf!("Exported: {}", worker_path.display()).into_owned())
                 .map_err(|e| crate::tf!("Export failed: {e}").into_owned())
@@ -5423,6 +5472,7 @@ impl OpenCADStudio {
         };
         let worker_path = path.clone();
         self.close_active_modal();
+        let open_when_done = self.plot_dialog.open_when_done;
         let work = move || {
             let result = if worker_path
                 .extension()
@@ -5432,6 +5482,10 @@ impl OpenCADStudio {
             } else {
                 crate::io::pdf_export::export_pdf(&page, &worker_path)
             };
+            if result.is_ok() && open_when_done {
+                // A viewer that cannot start leaves the file written all the same.
+                let _ = crate::io::print_to_printer::open_in_viewer(&worker_path);
+            }
             result
                 .map(|_| {
                     crate::tf!(
@@ -6743,6 +6797,7 @@ impl OpenCADStudio {
                     PlotFlag::Stamp => d.stamp = !d.stamp,
                     PlotFlag::HidePaperspace => d.hide_paperspace = !d.hide_paperspace,
                     PlotFlag::SaveToLayout => d.save_to_layout = !d.save_to_layout,
+                    PlotFlag::OpenWhenDone => d.open_when_done = !d.open_when_done,
                     _ => {}
                 }
                 Task::none()
@@ -7184,7 +7239,11 @@ impl OpenCADStudio {
         };
         // The file's factor is per the layout's paper unit; the picker's are
         // per the drawing's scale-family unit (see `plot_settings_from_dialog`).
-        let target_factor = if stored_factor.is_finite() && stored_factor > 0.0 {
+        // A Layout plot is always 1:1 paper, whatever the family unit: a
+        // metre drawing showed it as 1:1000 (#2219).
+        let target_factor = if d.area == "Layout" {
+            1.0
+        } else if stored_factor.is_finite() && stored_factor > 0.0 {
             stored_factor * plot_paper_unit_mm(ps.paper_units) / family_unit_mm
         } else {
             1.0

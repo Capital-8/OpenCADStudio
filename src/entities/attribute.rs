@@ -387,6 +387,7 @@ fn build_attr_layout(
                 oblique: oblique_angle,
                 tracking: 1.0,
                 bold: false,
+                aci: None,
             }),
         });
     }

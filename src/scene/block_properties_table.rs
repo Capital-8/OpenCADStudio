@@ -560,7 +560,7 @@ fn encode_fields(
         vec![int(90, 2), text(300, "Block Table1"), text(301, "")]
     };
     fields.push(int(91, columns.len() as i64));
-    for (index, column) in columns.iter().enumerate() {
+    for column in columns {
         let mut metadata = previous
             .as_ref()
             .and_then(|previous| {
@@ -600,14 +600,11 @@ fn encode_fields(
                 column.connection_name.eq_ignore_ascii_case("UpdatedAngle"),
             );
         }
-        // The first binding precedes its metadata; subsequent bindings follow it.
-        if index == 0 {
-            fields.push(handle_field(340, column.handle));
-        }
+        // Every column stores its binding before its metadata and a null
+        // handle after it.
+        fields.push(handle_field(340, column.handle));
         fields.extend(metadata);
-        if index != 0 {
-            fields.push(handle_field(340, column.handle));
-        }
+        fields.push(handle_field(340, Handle::NULL));
     }
     fields.push(int(92, rows.len() as i64));
     for (index, row) in rows.iter().enumerate() {
@@ -617,20 +614,25 @@ fn encode_fields(
             fields.push(real_field(140, *value));
         }
     }
-    let mut trailer = previous
-        .as_ref()
-        .map(|previous| previous.table.fields[previous.trailer_start + 1..].to_vec())
-        .unwrap_or_else(|| {
-            vec![
-                boolean(290, must_match),
-                boolean(291, true),
-                boolean(292, false),
-            ]
-        });
-    if let Some(field) = trailer.iter_mut().find(|field| field.code == 290) {
-        field.value = BlockPropertiesTableValue::Boolean(must_match);
+    // Group 93 is the next row ID, followed by exactly three flags (must
+    // match, runtime parameters only, disabled in the drawing editor).
+    let mut trailer = vec![
+        boolean(290, must_match),
+        boolean(291, true),
+        boolean(292, false),
+    ];
+    if let Some(previous) = previous.as_ref() {
+        for (flag, old) in trailer
+            .iter_mut()
+            .zip(&previous.table.fields[previous.trailer_start + 1..])
+            .skip(1)
+        {
+            if let BlockPropertiesTableValue::Boolean(value) = old.value {
+                flag.value = BlockPropertiesTableValue::Boolean(value);
+            }
+        }
     }
-    fields.push(int(93, trailer.len() as i64));
+    fields.push(int(93, rows.len() as i64));
     fields.extend(trailer);
     Ok(fields)
 }

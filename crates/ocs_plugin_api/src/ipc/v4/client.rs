@@ -552,6 +552,30 @@ impl HostApi for V4PluginHostApi {
         }
     }
 
+    fn begin_undo_group(&mut self, label: &str) {
+        if let Err(e) = self.request(PluginRequest::BeginUndoGroup {
+            label: label.to_string(),
+        }) {
+            eprintln!("[plugin] begin_undo_group failed: {e}");
+        }
+    }
+
+    fn end_undo_group(&mut self) {
+        if let Err(e) = self.request(PluginRequest::EndUndoGroup) {
+            eprintln!("[plugin] end_undo_group failed: {e}");
+        }
+    }
+
+    fn query_entities(&mut self, query: &str) -> Result<crate::host::EntityPage, String> {
+        match self.request(PluginRequest::QueryEntities {
+            query: query.to_string(),
+        }) {
+            Ok(PluginResponse::EntityPage(page)) => page,
+            Ok(other) => Err(format!("unexpected QueryEntities response: {other:?}")),
+            Err(e) => Err(format!("QueryEntities failed: {e}")),
+        }
+    }
+
     fn set_dirty(&mut self) {
         if let Err(e) = self.request(PluginRequest::SetDirty) {
             eprintln!("[plugin] set_dirty failed: {e}");
@@ -686,7 +710,11 @@ impl HostApi for V4PluginHostApi {
     fn document_view_v4(&mut self, tab_id: u64) -> Option<DocumentViewInfo> {
         {
             let mut view = self.doc_view_v4.borrow_mut();
-            if view.as_ref().map(|(cached_id, _)| *cached_id) != Some(tab_id) {
+            // A drawing that outgrew its mapping moved to a new file.
+            let current = view.as_ref().is_some_and(|(cached_id, info)| {
+                *cached_id == tab_id && Path::new(&info.path).exists()
+            });
+            if !current {
                 match self.request(PluginRequest::OpenDocumentViewV4 { tab_id }) {
                     Ok(PluginResponse::DocumentViewV4 { path, version }) => {
                         *view = Some((tab_id, DocumentViewInfo { path, version }));
@@ -1214,6 +1242,72 @@ impl HostApi for V4PluginHostApi {
                 "unexpected class instance properties response: {other:?}"
             )),
             Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn show_dialog(&mut self, dialog: crate::dialog::DialogDef) -> crate::dialog::DialogResponse {
+        match self.request(PluginRequest::ShowDialog(dialog)) {
+            Ok(PluginResponse::DialogResult(res)) => res,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected ShowDialog response: {other:?}");
+                crate::dialog::DialogResponse::Cancelled
+            }
+            Err(e) => {
+                eprintln!("[plugin] ShowDialog request failed: {e}");
+                crate::dialog::DialogResponse::Cancelled
+            }
+        }
+    }
+
+    fn register_panel(&mut self, panel: crate::dialog::PanelDef) -> bool {
+        match self.request(PluginRequest::RegisterPanel(panel)) {
+            Ok(PluginResponse::PanelRegistered(b)) => b,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected RegisterPanel response: {other:?}");
+                false
+            }
+            Err(e) => {
+                eprintln!("[plugin] RegisterPanel request failed: {e}");
+                false
+            }
+        }
+    }
+
+    fn update_panel(
+        &mut self,
+        panel_id: &str,
+        values: std::collections::HashMap<String, crate::dialog::DialogValue>,
+    ) -> bool {
+        match self.request(PluginRequest::UpdatePanel {
+            panel_id: panel_id.to_string(),
+            values,
+        }) {
+            Ok(PluginResponse::PanelUpdated(b)) => b,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected UpdatePanel response: {other:?}");
+                false
+            }
+            Err(e) => {
+                eprintln!("[plugin] UpdatePanel request failed: {e}");
+                false
+            }
+        }
+    }
+
+    fn toggle_panel(&mut self, panel_id: &str, show: Option<bool>) -> bool {
+        match self.request(PluginRequest::TogglePanel {
+            panel_id: panel_id.to_string(),
+            show,
+        }) {
+            Ok(PluginResponse::PanelToggled(b)) => b,
+            Ok(other) => {
+                eprintln!("[plugin] unexpected TogglePanel response: {other:?}");
+                false
+            }
+            Err(e) => {
+                eprintln!("[plugin] TogglePanel request failed: {e}");
+                false
+            }
         }
     }
 }

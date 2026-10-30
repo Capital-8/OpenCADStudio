@@ -40,8 +40,10 @@ use crate::ui::wrap_bar::{PosReport, WrapBar, WrapFlow};
 pub use collapse::CollapseMode;
 use collapse::{CollapsePanels, Panel};
 pub use keytips::{
-    KeyTipInput, KeyTipStep, active as keytips_active, key_pressed as keytip_key_pressed,
-    key_released as keytip_key_released, pointer_pressed as keytip_pointer_pressed,
+    KeyTipInput, KeyTipStep, active as keytips_active, clear_alt_alone as keytip_clear_alt_alone,
+    key_pressed as keytip_key_pressed, key_released as keytip_key_released,
+    note_command_finished as keytip_note_command_finished,
+    note_focus_changed as keytip_note_focus_changed, pointer_pressed as keytip_pointer_pressed,
 };
 
 pub(crate) fn tooltip_content(text: String) -> Element<'static, Message> {
@@ -232,6 +234,8 @@ pub struct Ribbon {
     /// Live filter for the layer dropdown's search box (#343). Cleared on
     /// close so the next open starts unfiltered.
     pub layer_filter: String,
+    /// The drawing's saved layer states, restored from the layer dropdown.
+    pub layer_states: Vec<String>,
     /// Active object color — ACI / ByLayer / ByBlock.
     pub active_color: AcadColor,
     /// Colour-book identity (`BOOK$NAME`) of a colour picked from a colour
@@ -388,6 +392,7 @@ impl Ribbon {
             active_layer: String::new(),
             layer_infos: vec![],
             layer_filter: String::new(),
+            layer_states: Vec::new(),
             active_color: AcadColor::ByLayer,
             active_color_book: None,
             active_linetype: "ByLayer".to_string(),
@@ -1500,10 +1505,21 @@ impl Ribbon {
         .style(popup_row_style)
         .width(Fill)
         .padding([6, 10]);
+        // Saved layer states restore with one click, as the manager's
+        // Restore does.
+        let states = column(self.layer_states.iter().map(|name| {
+            button(text(name).size(11))
+                .on_press(Message::RibbonLayerStateRestore(name.clone()))
+                .style(popup_row_style)
+                .width(Fill)
+                .padding([4, 26])
+                .into()
+        }));
         let panel = container(
             column![
                 container(search).padding([4, 4]),
                 scrollable(column(rows)).height(Length::Fixed(list_h)),
+                states,
                 container(state_manager)
                     .width(Fill)
                     .padding([3, 4])
@@ -1798,7 +1814,32 @@ fn render_group<'a>(
         compact,
     };
 
-    for item in &group.tools {
+    let mut tools = group.tools.iter().peekable();
+    while let Some(item) = tools.next() {
+        // Dimensions: the small tools after the style / layer lists are their
+        // bottom row (Linear, Quick, Continue), not a column of their own.
+        if !compact
+            && matches!(
+                item,
+                RibbonItem::StyleComboGroup {
+                    style_key: crate::modules::StyleKey::DimStyle,
+                    ..
+                }
+            )
+        {
+            flush_small_col(&mut small_buf, &mut items_row);
+            let mut below = Vec::new();
+            while let Some(next) = tools.next_if(|next| {
+                matches!(
+                    next,
+                    RibbonItem::LabeledTool(_) | RibbonItem::LabeledDropdown { .. }
+                )
+            }) {
+                below.push(widgets::render_row_item(next, active_tool, open_dd, last_cmd, state));
+            }
+            items_row.push(widgets::render_large_with(item, &ctx, below));
+            continue;
+        }
         let is_large = match item {
             RibbonItem::LargeTool(_) | RibbonItem::LargeDropdown { .. } => !compact,
             RibbonItem::ToolGrid { .. }

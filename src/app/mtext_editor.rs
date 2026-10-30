@@ -1070,6 +1070,45 @@ impl super::OpenCADStudio {
     }
 
     pub(super) fn mtext_stack_selection(&mut self) {
+        self.mtext_stack_selection_with(|plain| {
+            let (split, separator) = plain
+                .char_indices()
+                .find(|(_, ch)| matches!(ch, '/' | '#' | '^'))?;
+            let data = StackingData {
+                numerator: plain[..split].to_string(),
+                denominator: plain[split + separator.len_utf8()..].to_string(),
+                stacking_type: StackingType::from_char(separator),
+            };
+            // A `^` stack may leave one half empty: "2^" stacks as a
+            // superscript and "^2" as a subscript (#2236).
+            let one_sided = separator == '^'
+                && !(data.numerator.is_empty() && data.denominator.is_empty());
+            (one_sided || !(data.numerator.is_empty() || data.denominator.is_empty()))
+                .then_some(data)
+        });
+    }
+
+    /// Superscript (or subscript) the selection: a one-sided `^` stack.
+    pub(super) fn mtext_script_selection(&mut self, superscript: bool) {
+        self.mtext_stack_selection_with(|plain| {
+            if plain.is_empty() || plain.contains(['\n', '^']) {
+                return None;
+            }
+            let (numerator, denominator) = if superscript {
+                (plain.to_string(), String::new())
+            } else {
+                (String::new(), plain.to_string())
+            };
+            Some(StackingData {
+                numerator,
+                denominator,
+                stacking_type: StackingType::from_char('^'),
+            })
+        });
+    }
+
+    /// Replace the selection with the stack `stack` makes of its plain text.
+    fn mtext_stack_selection_with(&mut self, stack: impl FnOnce(&str) -> Option<StackingData>) {
         if let Some(ed) = self.mtext_editor.as_mut() {
             let Some((start, end)) = ed.sel.filter(|(start, end)| start < end) else {
                 return;
@@ -1079,21 +1118,9 @@ impl super::OpenCADStudio {
             let end = end.min(cells.len());
             let plain =
                 cells_to_doc(&ParagraphProperties::default(), &cells[start..end]).to_plain_text();
-            let Some((split, separator)) = plain
-                .char_indices()
-                .find(|(_, ch)| matches!(ch, '/' | '#' | '^'))
-            else {
+            let Some(data) = stack(&plain) else {
                 return;
             };
-            let separator_len = separator.len_utf8();
-            let data = StackingData {
-                numerator: plain[..split].to_string(),
-                denominator: plain[split + separator_len..].to_string(),
-                stacking_type: StackingType::from_char(separator),
-            };
-            if data.numerator.is_empty() || data.denominator.is_empty() {
-                return;
-            }
             let props = cells[start..end]
                 .iter()
                 .find_map(|cell| match cell {
@@ -2237,3 +2264,4 @@ mod cell_tests {
         );
     }
 }
+

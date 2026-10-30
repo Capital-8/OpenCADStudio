@@ -41,6 +41,8 @@ pub enum InteractiveEvent {
     Cancel,
     /// A set of entities selected during selection gathering mode.
     SelectionComplete(Vec<Handle>),
+    /// V7 (additive): modal dialog submitted or cancelled.
+    DialogResponse(crate::dialog::DialogResponse),
 }
 
 /// Initial handshake sent by the plugin runner immediately after connecting.
@@ -119,6 +121,10 @@ pub enum HostRequest {
     SelectionRejectsLockedLayers {
         command_id: u64,
     },
+    /// V7: query optional modal dialog for an interactive command.
+    GetModalDialog {
+        command_id: u64,
+    },
 }
 
 /// Responses the plugin runner sends back for `HostRequest`.
@@ -135,6 +141,7 @@ pub enum HostResponse {
     /// V11: the owning plugin's answer to a custom-grip drag event: the
     /// preview wire set that replaces its previous live preview.
     CustomGrip(CustomGripResponse),
+    ModalDialog(Option<crate::dialog::DialogDef>),
 }
 
 /// Requests the plugin runner sends to the host.
@@ -334,6 +341,31 @@ pub enum PluginRequest {
     PluginClassInstanceProperties {
         handle: Handle,
     },
+    /// V7 (additive): modal form dialog request.
+    ShowDialog(crate::dialog::DialogDef),
+    /// V7 (additive): register a persistent dockable side panel.
+    RegisterPanel(crate::dialog::PanelDef),
+    /// V7 (additive): update control values in a persistent dockable side panel.
+    UpdatePanel {
+        panel_id: String,
+        values: std::collections::HashMap<String, crate::dialog::DialogValue>,
+    },
+    /// V7 (additive): toggle visibility or show/hide a persistent dockable side panel.
+    TogglePanel {
+        panel_id: String,
+        show: Option<bool>,
+    },
+    /// V14: open one undo step that later messages join until
+    /// [`PluginRequest::EndUndoGroup`].
+    BeginUndoGroup {
+        label: String,
+    },
+    /// V14: close the step [`PluginRequest::BeginUndoGroup`] opened.
+    EndUndoGroup,
+    /// V14: a page of the entities matching a control-API `query` JSON.
+    QueryEntities {
+        query: String,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -411,6 +443,12 @@ pub enum PluginResponse {
     PluginClassInstancePropertiesResult(
         Result<Vec<crate::host::PluginClassParameterRow>, String>,
     ),
+    DialogResult(crate::dialog::DialogResponse),
+    PanelRegistered(bool),
+    PanelUpdated(bool),
+    PanelToggled(bool),
+    /// V14: answer to [`PluginRequest::QueryEntities`].
+    EntityPage(Result<crate::host::EntityPage, String>),
 }
 
 /// Messages sent from the host to the plugin runner.

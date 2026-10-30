@@ -163,6 +163,21 @@ fn cell_text_style(
     })
 }
 
+/// The face each text style draws with, resolved the way text of that style
+/// resolves anywhere else (a .shx file on disk before the built-in stroke
+/// font of its name), so a table's cells match the text of its picture.
+fn table_style_fonts(document: &codec::Document) -> rustc_hash::FxHashMap<codec::Handle, String> {
+    document
+        .text_styles
+        .iter()
+        .map(|style| {
+            let font = crate::entities::text_support::resolve_text_style(&style.name, document)
+                .font_name;
+            (style.handle, font)
+        })
+        .collect()
+}
+
 fn style_for_border<'a>(
     table: &'a Table,
     row: &'a codec::entities::table::TableRow,
@@ -1190,33 +1205,9 @@ impl RenderConvertible for Table {
         let title_suppressed = resolved_title_suppressed(self, table_style);
         let header_suppressed = resolved_header_suppressed(self, table_style);
 
+        let style_fonts = table_style_fonts(document);
         let font_for_handle = |handle: Option<codec::Handle>| -> Option<String> {
-            handle.and_then(|h| lookup_style(h)).and_then(|s| {
-                let mut font_name = if !s.true_type_font.trim().is_empty() {
-                    s.true_type_font.trim().to_string()
-                } else {
-                    let file = s.font_file.trim();
-                    if !file.is_empty() {
-                        let basename = file.rsplit(['/', '\\']).next().unwrap_or(file);
-                        let stem = basename.split('.').next().unwrap_or(basename).trim();
-                        if !stem.is_empty() {
-                            stem.to_string()
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
-                };
-                if !crate::scene::text::lff::is_builtin(&font_name) {
-                    if let Some(canonical) =
-                        crate::scene::text::sysfont::canonical_family_name(&font_name)
-                    {
-                        font_name = canonical;
-                    }
-                }
-                Some(font_name)
-            })
+            handle.and_then(|h| style_fonts.get(&h).cloned())
         };
         // Build a ResolvedTextStyle for the cell — needed by the shared MText
         // pipeline so inline `\W`, `\Q`, etc. compose with the style baseline.
@@ -1469,29 +1460,9 @@ pub fn tessellate_table(
     let lookup_style = |hh: codec::Handle| -> Option<&codec::tables::TextStyle> {
         document.text_styles.iter().find(|s| s.handle == hh)
     };
+    let style_fonts = table_style_fonts(document);
     let font_for_handle = |handle: Option<codec::Handle>| -> Option<String> {
-        handle.and_then(lookup_style).and_then(|s| {
-            let mut font_name = if !s.true_type_font.trim().is_empty() {
-                s.true_type_font.trim().to_string()
-            } else {
-                let file = s.font_file.trim();
-                let basename = file.rsplit(['/', '\\']).next().unwrap_or(file);
-                let stem = basename.split('.').next().unwrap_or(basename).trim();
-                if !stem.is_empty() {
-                    stem.to_string()
-                } else {
-                    return None;
-                }
-            };
-            if !crate::scene::text::lff::is_builtin(&font_name) {
-                if let Some(canonical) =
-                    crate::scene::text::sysfont::canonical_family_name(&font_name)
-                {
-                    font_name = canonical;
-                }
-            }
-            Some(font_name)
-        })
+        handle.and_then(|h| style_fonts.get(&h).cloned())
     };
     let resolved_style_for_handle =
         |handle: Option<codec::Handle>, font_name: String| -> ResolvedTextStyle {

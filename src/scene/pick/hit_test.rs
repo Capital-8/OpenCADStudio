@@ -564,6 +564,9 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
         return Vec::new();
     }
     let mut hits: Vec<(f32, &str)> = Vec::new();
+    // Mirrors the names in `hits` so the fill/pick/glyph phases below test
+    // membership in O(1) instead of a linear scan per candidate wire.
+    let mut hit_names: HashSet<&str> = HashSet::default();
     let mut marker_hits: HashMap<&str, f32> = HashMap::default();
     for wire in wires
         .iter()
@@ -602,6 +605,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             .into_iter()
             .map(|(name, distance)| (distance, name)),
     );
+    hit_names.extend(hits.iter().map(|&(_, name)| name));
     if let Some(segments) = wires.segments() {
         let mut best_by_wire: HashMap<u32, f32> = HashMap::default();
         for segment in segments {
@@ -647,6 +651,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
                 .source_wire(wire_idx)
                 .map(|wire| (distance, wire.name.as_str()))
         }));
+        hit_names.extend(hits.iter().map(|&(_, name)| name));
     } else {
         for wire in wires.iter() {
             if wire.snap_only || wire.reference_only {
@@ -684,6 +689,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             }
             if hit {
                 hits.push((best_for_wire, &wire.name));
+                hit_names.insert(&wire.name);
             }
         }
     }
@@ -701,7 +707,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if wire.snap_only || wire.reference_only {
                 continue;
             }
-            if hits.iter().any(|&(_, name)| name == wire.name) {
+            if hit_names.contains(wire.name.as_str()) {
                 matched.insert(triangle.wire);
                 continue;
             }
@@ -717,6 +723,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             .is_some()
             {
                 hits.push((base_radius_px.max(1.0), wire.name.as_str()));
+                hit_names.insert(wire.name.as_str());
                 matched.insert(triangle.wire);
             }
         }
@@ -725,7 +732,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if wire.snap_only || wire.reference_only {
                 continue;
             }
-            if wire.fill_tris.is_empty() || hits.iter().any(|&(_, name)| name == wire.name) {
+            if wire.fill_tris.is_empty() || hit_names.contains(wire.name.as_str()) {
                 continue;
             }
             if tris_hit_depth(
@@ -739,6 +746,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             .is_some()
             {
                 hits.push((base_radius_px.max(1.0), wire.name.as_str()));
+                hit_names.insert(wire.name.as_str());
             }
         }
     }
@@ -761,7 +769,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if wire.snap_only || wire.reference_only {
                 continue;
             }
-            if hits.iter().any(|&(_, name)| name == wire.name) {
+            if hit_names.contains(wire.name.as_str()) {
                 matched.insert(triangle.wire);
                 continue;
             }
@@ -777,6 +785,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             .is_some()
             {
                 hits.push((base_radius_px.max(1.0), wire.name.as_str()));
+                hit_names.insert(wire.name.as_str());
                 matched.insert(triangle.wire);
             }
         }
@@ -785,7 +794,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if wire.snap_only || wire.reference_only {
                 continue;
             }
-            if wire.pick_tris.is_empty() || hits.iter().any(|&(_, name)| name == wire.name) {
+            if wire.pick_tris.is_empty() || hit_names.contains(wire.name.as_str()) {
                 continue;
             }
             if tris_hit_depth(
@@ -799,6 +808,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             .is_some()
             {
                 hits.push((base_radius_px.max(1.0), wire.name.as_str()));
+                hit_names.insert(wire.name.as_str());
             }
         }
     }
@@ -817,7 +827,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if wire.snap_only || wire.reference_only {
                 continue;
             }
-            if hits.iter().any(|&(_, name)| name == wire.name) {
+            if hit_names.contains(wire.name.as_str()) {
                 matched.insert(glyph.wire);
                 continue;
             }
@@ -827,6 +837,7 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             };
             if text_quad_hit_area(cursor, vertices, view_rot, eye, bounds).is_some() {
                 hits.push((base_radius_px.max(1.0), wire.name.as_str()));
+                hit_names.insert(wire.name.as_str());
                 matched.insert(glyph.wire);
             }
         }
@@ -835,11 +846,12 @@ pub fn click_hits_all<'a, W: WireSource + ?Sized>(
             if wire.snap_only || wire.reference_only {
                 continue;
             }
-            if wire.text_verts.is_empty() || hits.iter().any(|&(_, name)| name == wire.name) {
+            if wire.text_verts.is_empty() || hit_names.contains(wire.name.as_str()) {
                 continue;
             }
             if text_quad_hit_area(cursor, &wire.text_verts, view_rot, eye, bounds).is_some() {
                 hits.push((base_radius_px.max(1.0), wire.name.as_str()));
+                hit_names.insert(wire.name.as_str());
             }
         }
     }
@@ -1882,8 +1894,10 @@ pub fn box_hit<'a, W: WireSource + ?Sized>(
     let min_y = corner_a.y.min(corner_b.y).max(0.0);
     let max_y = corner_a.y.max(corner_b.y).min(bounds.height);
 
-    // Ignore zero-area boxes (including a box clamped entirely off-pane).
-    if (max_x - min_x) < 1.0 || (max_y - min_y) < 1.0 {
+    // A box clamped entirely off the pane holds nothing. A box with no width
+    // or no height still selects what lies on it or crosses it, as in the
+    // reference.
+    if max_x < min_x || max_y < min_y {
         return vec![];
     }
 
@@ -2577,7 +2591,7 @@ fn hatch_box_hit(
     let max_x = corner_a.x.max(corner_b.x);
     let min_y = corner_a.y.min(corner_b.y);
     let max_y = corner_a.y.max(corner_b.y);
-    if (max_x - min_x) < 1.0 || (max_y - min_y) < 1.0 || hatch.boundary.is_empty() {
+    if max_x < min_x || max_y < min_y || hatch.boundary.is_empty() {
         return false;
     }
     let inside =
@@ -2960,6 +2974,7 @@ mod aabb_reject_tests {
             uv: [0.0; 2],
             color: [1.0; 4],
             draw_depth: 0.0,
+            pen: 0.0,
         };
         let mut block = wire(
             "479",

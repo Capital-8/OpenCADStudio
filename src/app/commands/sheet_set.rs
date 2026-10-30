@@ -84,7 +84,7 @@ fn folder_of(path: &str) -> String {
 /// `.dst` access: native only (a browser has no file paths to read or write).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn read_set(path: &str) -> Result<SheetSetDatabase, String> {
-    SheetSetDatabase::read(path)
+    SheetSetDatabase::read(path).map_err(|e| e.to_string())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -94,7 +94,7 @@ pub(crate) fn read_set(_path: &str) -> Result<SheetSetDatabase, String> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn write_set(db: &mut SheetSetDatabase, path: &str) -> Result<(), String> {
-    db.write(path)
+    db.write(path).map_err(|e| e.to_string())
 }
 
 #[cfg(target_arch = "wasm32")]
