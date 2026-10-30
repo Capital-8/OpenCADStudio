@@ -735,9 +735,14 @@ impl OpenCADStudio {
                 PropValue::BlockChoice {
                     selected, options, ..
                 } => {
-                    if let Some(opt) = options.get(selected) {
-                        dyn_props.insert(prop.label, json!(opt));
-                    }
+                    // A row that matches nothing stays in the panel as a
+                    // choice without a current option, so it stays here too:
+                    // `null` means present and unmatched, a missing key means
+                    // the definition has no such property.
+                    dyn_props.insert(
+                        prop.label,
+                        options.get(selected).map_or(Value::Null, |opt| json!(opt)),
+                    );
                 }
                 PropValue::Choice { selected, .. } | PropValue::ChoiceWithTooltip { selected, .. } => {
                     dyn_props.insert(prop.label, json!(selected));

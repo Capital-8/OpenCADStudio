@@ -322,6 +322,72 @@ fn block_table_properties_show_custom_after_an_independent_parameter_edit() {
 }
 
 #[test]
+fn blocks_reports_an_unmatched_table_row_as_present_and_unmatched() {
+    let (mut app, _, _, insert, _, _) = table_fixture(false);
+    let i = app.active_tab;
+    let handle = format!("{:X}", insert.value());
+    let reference = |response: &serde_json::Value| {
+        response["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|block| block["handle"] == handle.as_str())
+            .unwrap()
+            .clone()
+    };
+    let label = app.tabs[i]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .find_map(|property| match &property.value {
+            PropValue::BlockChoice { key, .. } if matches!(key.component, Component::TableRow(_)) => {
+                Some(property.label.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    let (matched, _) = app.control_request(serde_json::json!({
+        "op": "blocks",
+        "names": ["*"],
+        "extract_dynamic_properties": true
+    }));
+    assert_eq!(
+        reference(&matched)["dynamic_properties"][&label],
+        serde_json::json!("1: 10, 20"),
+        "{matched}"
+    );
+    let field = app.tabs[i]
+        .properties
+        .sections
+        .iter()
+        .flat_map(|section| &section.props)
+        .find_map(|property| match property.value {
+            PropValue::BlockNumber { key, .. } => Some(key),
+            _ => None,
+        })
+        .unwrap();
+    let _ = app.update(Message::PropBlockInput {
+        key: field,
+        value: "12".into(),
+    });
+    let _ = app.update(Message::PropBlockCommit(field));
+    assert_eq!(row(&app).1, usize::MAX);
+    let (unmatched, _) = app.control_request(serde_json::json!({
+        "op": "blocks",
+        "names": ["*"],
+        "extract_dynamic_properties": true
+    }));
+    let block = reference(&unmatched);
+    let properties = block["dynamic_properties"].as_object().unwrap();
+    assert!(
+        properties.contains_key(&label),
+        "the panel shows Custom for this row, so the read model keeps it: {unmatched}"
+    );
+    assert_eq!(properties[&label], serde_json::Value::Null, "{unmatched}");
+}
+
+#[test]
 fn block_table_properties_wrap_angles_and_display_degrees_without_actions() {
     let (mut app, _, def, insert, _, _) = table_fixture(false);
     let i = app.active_tab;
