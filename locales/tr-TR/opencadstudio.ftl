@@ -5311,6 +5311,7 @@ properties =
     .major-axis-vector-z = Büyük eksen vektörü Z
     .major-radius = Büyük yarıçap
     .manual-heights = Elle girilen yükseklikler
+    .break-height = Bölme yüksekliği
     .manual-positions = Elle girilen konumlar
     .map-size = Doku Boyutu
     .mass-properties = Kütle Özellikleri

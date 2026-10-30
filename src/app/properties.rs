@@ -1257,6 +1257,12 @@ impl OpenCADStudio {
                 use codec::entities::table::{
                     CellEdgeFlags, CellStylePropertyFlags, CellValueType,
                 };
+                // A table shows its linetype scale but does not take one.
+                set_row(
+                    &mut sections,
+                    "linetype_scale",
+                    crate::entities::common::format_length(table.common.linetype_scale),
+                );
 
                 let mut names: Vec<String> = doc
                     .objects
@@ -1304,6 +1310,18 @@ impl OpenCADStudio {
                 let flow_up = crate::entities::table::resolved_flow_up(table, selected_style);
                 let (horizontal_margin, vertical_margin) =
                     crate::entities::table::resolved_table_margins(table, selected_style);
+                // A spacing the table never stored shows its default: five
+                // and a half data-text heights (0.18 high text without data rows).
+                if table.break_spacing <= 0.0 {
+                    let data_height = selected_style
+                        .filter(|_| table.rows.len() > 2)
+                        .map_or(0.18, |style| style.data_row_style.text_height);
+                    update_row_text(
+                        &mut sections,
+                        "tbl_break_spacing",
+                        crate::entities::common::format_length(5.5 * data_height),
+                    );
+                }
                 update_row_toggle(&mut sections, "tbl_title_suppressed", title_suppressed);
                 update_row_toggle(&mut sections, "tbl_header_suppressed", header_suppressed);
                 update_row_text(
@@ -1548,7 +1566,6 @@ impl OpenCADStudio {
                 codec::EntityType::MultiLeader(_) => Some(("annotative", None)),
                 codec::EntityType::Dimension(_) => Some(("annotative", Some("style_name"))),
                 codec::EntityType::Tolerance(_) => Some(("annotative", Some("tol_dim_style"))),
-                codec::EntityType::Table(_) => Some(("annotative", Some("tbl_style_handle"))),
                 _ => None,
             };
             if let Some((anno_field, insert_after)) = anno {
