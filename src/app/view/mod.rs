@@ -4910,6 +4910,52 @@ pub(super) fn recent_files_panel<'a>(
 mod tests {
     use super::*;
 
+    /// The visibility dropdown draws its entries in one left-aligned column,
+    /// with a fixed leading slot for the tick of the state in use.
+    #[test]
+    fn visibility_popup_left_aligns_its_state_entries() {
+        use iced_test::core::widget;
+        use iced_test::runtime::user_interface::{Cache, UserInterface};
+        use iced_test::Selector;
+
+        let mut app = crate::app::OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        app.visibility_popup = Some(crate::app::visibility::VisibilityPopup {
+            insert_handle: codec::Handle::new(1),
+            anchor: iced::Point::new(400.0, 300.0),
+            items: vec!["VisibilityState0".into(), "WindowHidden".into()],
+            current: Some(1),
+        });
+
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            <iced::Renderer as iced_test::core::renderer::Headless>::new(
+                iced_test::core::renderer::Settings::default(),
+                None,
+            ),
+        )
+        .expect("headless renderer");
+        let mut ui = UserInterface::build(
+            app.view_main(),
+            iced::Size::new(1600.0, 900.0),
+            Cache::default(),
+            &mut renderer,
+        );
+        let mut left = Vec::new();
+        for label in ["VisibilityState0", "WindowHidden"] {
+            let mut find = Selector::find(label);
+            ui.operate(&renderer, &mut widget::operation::black_box(&mut find));
+            let widget::operation::Outcome::Some(Some(target)) = widget::Operation::finish(&find)
+            else {
+                panic!("{label} is not drawn");
+            };
+            left.push(target.visible_bounds().expect("the entry is visible").x);
+        }
+        assert!(
+            (left[0] - left[1]).abs() < 0.5,
+            "entries of different lengths start on one column, not centred: {left:?}"
+        );
+    }
+
     #[test]
     fn rapid_drawing_batched_pointer_events_keep_the_position_before_each_press() {
         use iced::mouse::{Button, Cursor, Event as Mouse};
