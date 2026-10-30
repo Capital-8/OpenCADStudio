@@ -324,7 +324,8 @@ fn in_dash(
         value = ((distance - align_end + first_dash) % pattern_length
             + pattern_length) % pattern_length;
     } else {
-        value = ((distance % pattern_length) + pattern_length) % pattern_length;
+        // The cap before the start reads as the start (see wire.wgsl).
+        value = ((max(distance, 0.0) % pattern_length) + pattern_length) % pattern_length;
     }
     var position = 0.0;
     let dot_half = u.world_per_pixel * 0.75;
