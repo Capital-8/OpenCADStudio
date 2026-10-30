@@ -108,6 +108,7 @@ impl OpenCADStudio {
             Some(K::BlockEditChanges) => crate::t!("Block Editor").into_owned(),
             Some(K::BlockEditPicker) => crate::t!("Edit Block Definition").into_owned(),
             Some(K::Rename) => crate::tr!("rename-dialog", "title"),
+            Some(K::Purge) => crate::tr!("purge-dialog", "title"),
             Some(K::SelectSimilarSettings) => crate::tr!("select-similar", "title"),
             Some(K::BlockVisibility) => crate::t!("Visibility States").into_owned(),
             Some(K::BlockLookup) => crate::t!("Property Lookup Table").into_owned(),
@@ -426,6 +427,10 @@ impl OpenCADStudio {
             }
             super::super::ModalKind::SelectSimilarSettings => {
                 crate::ui::window::select_similar::view_window(self.select_similar_settings?)
+            }
+            super::super::ModalKind::Purge => {
+                let state = self.purge_dialog.as_ref()?;
+                sized_flow(ex, 460, 520, |flow| crate::ui::window::purge::view(state, flow))
             }
             super::super::ModalKind::Rename => {
                 let state = self.rename_dialog.as_ref()?;

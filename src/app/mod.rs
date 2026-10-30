@@ -63,6 +63,7 @@ mod options_session;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_host;
 mod presspull_ops;
+mod purge_dialog;
 mod rename_dialog;
 mod properties;
 mod quick_calc;
@@ -704,6 +705,9 @@ pub(super) struct OpenCADStudio {
     block_definition_open_editor: Option<String>,
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
     rename_dialog: Option<crate::ui::window::rename::State>,
+    purge_dialog: Option<crate::ui::window::purge::State>,
+    /// The Purge dialog's choice, for the PURGE it runs.
+    purge_only: Option<purge_dialog::PurgeOnly>,
     /// Select Similar settings being edited.
     select_similar_settings: Option<u16>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
@@ -2832,6 +2836,7 @@ pub enum ModalKind {
     BlockEditChanges,
     BlockEditPicker,
     Rename,
+    Purge,
     SelectSimilarSettings,
     BlockSaveAs,
     BlockVisibility,
@@ -3563,6 +3568,7 @@ pub enum Message {
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
     Rename(crate::ui::window::rename::RenameMsg),
+    Purge(crate::ui::window::purge::PurgeMsg),
     /// Select Similar settings: flip one SELECTSIMILARMODE bit.
     SelectSimilarSettingsToggle(u16),
     SelectSimilarSettingsOk,
@@ -5433,6 +5439,8 @@ impl OpenCADStudio {
             block_definition_open_editor: None,
             block_edit_picker: None,
             rename_dialog: None,
+            purge_dialog: None,
+            purge_only: None,
             select_similar_settings: None,
             block_save_as: None,
             block_visibility: None,

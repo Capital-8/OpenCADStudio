@@ -46,6 +46,7 @@ pub mod plot;
 pub mod plugin_manager;
 pub mod print_all;
 pub mod quick_calc;
+pub mod purge;
 pub mod recovery;
 pub mod rename;
 pub mod select_similar;
