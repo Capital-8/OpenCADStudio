@@ -1791,7 +1791,16 @@ impl OpenCADStudio {
             }
         };
         if state.output_file && !state.output_path.trim().is_empty() {
-            let file = PathBuf::from(state.output_path.trim());
+            // A relative output file goes next to the drawing.
+            let mut file = PathBuf::from(state.output_path.trim());
+            if let Some(dir) = self.tabs[i]
+                .current_path
+                .as_deref()
+                .and_then(std::path::Path::parent)
+                .filter(|_| file.is_relative())
+            {
+                file = dir.join(file);
+            }
             match write_extraction_file(&file, &rows) {
                 Ok(()) => self.command_line.push_output(
                     crate::tf!(
