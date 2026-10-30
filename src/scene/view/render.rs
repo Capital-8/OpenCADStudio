@@ -168,6 +168,8 @@ pub struct ViewportData {
     /// Point cloud lighting and density for this view: `[mode, source,
     /// drawn fraction, _, light direction x, y, z, _]`.
     pub(in crate::scene) point_cloud_light: [f32; 12],
+    /// Live-section planes clipping the point clouds (`n·p + d >= 0` kept).
+    pub(in crate::scene) point_cloud_clip: Vec<[f64; 4]>,
     pub(in crate::scene) meshes: Arc<Vec<MeshLodSet>>,
     pub(in crate::scene) background_image: Option<crate::scene::model::image_model::DecodedImage>,
     pub(in crate::scene) environment_image: Option<crate::scene::model::image_model::DecodedImage>,
@@ -618,7 +620,21 @@ impl shader::Primitive for Primitive {
                 inner.upload_point_clouds(device, queue, &vp.point_clouds);
                 inner.cached_point_cloud_source = Some(Arc::clone(&vp.point_clouds));
             }
-            inner.set_point_cloud_view(queue, vp.point_cloud_light);
+            // Relative to the eye, as the sprites are positioned.
+            let eye = glam::DVec3::new(
+                vp.uniforms.eye_high[0] as f64 + vp.uniforms.eye_low[0] as f64,
+                vp.uniforms.eye_high[1] as f64 + vp.uniforms.eye_low[1] as f64,
+                vp.uniforms.eye_high[2] as f64 + vp.uniforms.eye_low[2] as f64,
+            );
+            let clip: Vec<[f32; 4]> = vp
+                .point_cloud_clip
+                .iter()
+                .map(|&[x, y, z, d]| {
+                    let offset = glam::DVec3::new(x, y, z).dot(eye) + d;
+                    [x as f32, y as f32, z as f32, offset as f32]
+                })
+                .collect();
+            inner.set_point_cloud_view(queue, vp.point_cloud_light, &clip);
             let text_source_changed = inner
                 .cached_text_source
                 .as_ref()
@@ -1508,6 +1524,9 @@ fn render_signature(
     }
     .hash(&mut h);
     vp.point_cloud_light.map(f32::to_bits).hash(&mut h);
+    for plane in &vp.point_cloud_clip {
+        plane.map(f64::to_bits).hash(&mut h);
+    }
     vp.geometry_epoch.hash(&mut h);
     vp.selection_generation.hash(&mut h);
     vp.selected_sig.hash(&mut h);
@@ -5233,6 +5252,11 @@ impl Scene {
             hatches,
             wipeout_hatches,
             images,
+            point_cloud_clip: if point_clouds.clouds.is_empty() {
+                Vec::new()
+            } else {
+                self.live_section_clip_planes()
+            },
             point_clouds,
             point_cloud_light,
             meshes,

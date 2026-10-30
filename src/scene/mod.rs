@@ -9886,6 +9886,26 @@ impl Scene {
         all
     }
 
+    /// The planes a live section keeps the positive side of, in model space,
+    /// as `[nx, ny, nz, d]` with `n·p + d >= 0` kept: what point clouds are
+    /// clipped by, as solids are cut.
+    pub(crate) fn live_section_clip_planes(&self) -> Vec<[f64; 4]> {
+        let Some(section) = self.active_live_section(self.model_space_block_handle()) else {
+            return Vec::new();
+        };
+        Self::section_planes(&section.data, section.slice_depth, None)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|plane| {
+                let normal = glam::DVec3::from(plane.normal()?).normalize_or_zero();
+                (normal != glam::DVec3::ZERO).then(|| {
+                    let d = -normal.dot(glam::DVec3::from(plane.origin));
+                    [normal.x, normal.y, normal.z, d]
+                })
+            })
+            .collect()
+    }
+
     fn active_live_section(&self, target_block: Handle) -> Option<LiveSection> {
         self.document
             .entities()
