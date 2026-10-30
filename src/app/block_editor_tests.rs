@@ -9,6 +9,7 @@ mod lookup_properties;
 mod visibility_properties;
 mod grip_descriptions;
 mod flip_state_labels;
+mod properties_internal_rows;
 
 fn fixture() -> (OpenCADStudio, Handle) {
     let mut app = OpenCADStudio::new_for_test();

@@ -906,10 +906,19 @@ impl OpenCADStudio {
             // unit-scale factor against the drawing's INSUNITS.
             codec::EntityType::Insert(ins) => {
                 let host = doc.header.insertion_units;
-                let src = doc
-                    .block_records
-                    .get(&ins.block_name)
-                    .map(|br| br.units)
+                // An evaluated instance is named `*U…`; the row shows the
+                // definition it belongs to, and that definition carries the
+                // units the reference was authored in.
+                let (display_name, definition, _) =
+                    crate::app::control::block_ops::resolve_effective_block(doc, ins);
+                let src = definition
+                    .and_then(|handle| {
+                        doc.block_records
+                            .iter()
+                            .find(|record| record.handle == handle)
+                    })
+                    .or_else(|| doc.block_records.get(&ins.block_name))
+                    .map(|record| record.units)
                     .unwrap_or(0);
                 set_row(&mut sections, "block_unit", insunits_name(src).to_string());
                 let factor = insert_unit_scale(host, src).unwrap_or(1.0);
@@ -944,6 +953,8 @@ impl OpenCADStudio {
                             options,
                         },
                     );
+                } else {
+                    set_row(&mut sections, "block", display_name);
                 }
                 if let Some(br) = doc
                     .block_records
