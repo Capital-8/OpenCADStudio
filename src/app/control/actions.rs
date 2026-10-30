@@ -176,6 +176,7 @@ pub(super) const NAMES: &[&str] = &[
     "dialog_discard",
     "dialog_cancel",
     "block_def_dialog",
+    "table_insert_dialog",
     "attdef_dialog",
     "field_dialog",
     "attman_dialog",
@@ -1720,6 +1721,37 @@ impl OpenCADStudio {
                     return Err(failure("no_tab", "No such ribbon tab"));
                 }
                 return Ok(Task::none());
+            }
+            // The open Insert Table dialog: `style=…`, `columns=…`, `rows=…`,
+            // `width=…`, `lines=…`, `window=0|1`, `columns_fixed=0|1`,
+            // `rows_fixed=0|1`, `preview=0|1`, `styles` (the Table Style
+            // button), `ok`.
+            "table_insert_dialog" => {
+                use crate::ui::window::annotation_data::{TableInsertField as F, TableInsertion};
+                if self.active_modal != Some(crate::app::ModalKind::InsertTable) {
+                    return Err(failure("no_dialog", "The Insert Table dialog is not open"));
+                }
+                let value = string(req, "value")?;
+                let (key, v) = value.split_once('=').unwrap_or((value, ""));
+                let on = v == "1";
+                match key {
+                    "style" => Message::TableInsertStyle(v.to_string()),
+                    "columns" => Message::TableInsertField(F::Columns(v.to_string())),
+                    "rows" => Message::TableInsertField(F::DataRows(v.to_string())),
+                    "width" => Message::TableInsertField(F::ColumnWidth(v.to_string())),
+                    "lines" => Message::TableInsertField(F::RowHeight(v.to_string())),
+                    "window" => Message::TableInsertField(F::Insertion(if on {
+                        TableInsertion::Window
+                    } else {
+                        TableInsertion::Point
+                    })),
+                    "columns_fixed" => Message::TableInsertField(F::ColumnsFixed(on)),
+                    "rows_fixed" => Message::TableInsertField(F::RowsFixed(on)),
+                    "preview" => Message::TableInsertField(F::Preview(on)),
+                    "styles" => Message::TableInsertManageStyles,
+                    "ok" => Message::TableInsertApply,
+                    _ => return Err(failure("invalid_value", "Unknown Insert Table field")),
+                }
             }
             // The open Block Definition dialog: `name=…`, `open_in_editor=0|1`,
             // `base_on_screen=0|1`, `objects_on_screen=0|1`, `create_empty`,

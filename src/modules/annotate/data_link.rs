@@ -71,6 +71,14 @@ impl DataLinkPlaceCommand {
         }
     }
 
+    /// The same, placed from -TABLE's data Link option.
+    pub fn existing_from_table(table: Table, link: codec::Handle) -> Self {
+        Self {
+            command_name: "-TABLE",
+            ..Self::existing(table, link)
+        }
+    }
+
     /// Place a data extraction table; on placement it is linked to the
     /// extraction's settings file so DATALINKUPDATE can refresh it.
     pub fn extraction(mut table: Table, settings: String) -> Self {
@@ -211,6 +219,8 @@ impl CadCommand for DataLinkPlaceCommand {
     fn prompt(&self) -> String {
         if self.command_name == "DATALINK" {
             t!("DATALINK  Specify insertion point:").into_owned()
+        } else if self.command_name == "-TABLE" {
+            t!("%{n}  Specify insertion point:", n = "-TABLE").into_owned()
         } else {
             t!("DATAEXTRACTION  Specify insertion point:").into_owned()
         }
@@ -226,7 +236,15 @@ impl CadCommand for DataLinkPlaceCommand {
     }
 
     fn on_enter(&mut self) -> CmdResult {
+        if self.command_name == "-TABLE" {
+            return CmdResult::ReportError(t!("Invalid point.").into_owned());
+        }
         CmdResult::Cancel
+    }
+
+    fn on_text_input(&mut self, _text: &str) -> Option<CmdResult> {
+        (self.command_name == "-TABLE")
+            .then(|| CmdResult::ReportError(t!("Invalid point.").into_owned()))
     }
 
     fn on_mouse_move(&mut self, point: DVec3) -> Option<WireModel> {
