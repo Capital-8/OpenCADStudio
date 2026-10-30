@@ -314,13 +314,8 @@ fn in_dash(
         if distance <= align_end || distance >= align_total - align_end {
             return true;
         }
-        var first_dash = 0.0;
-        for (var i = 0u; i < count; i++) {
-            if elements[i] > 0.0 {
-                first_dash = elements[i];
-                break;
-            }
-        }
+        // The aligned pattern leads with its dash or dot (see wire.wgsl).
+        let first_dash = max(elements[0], 0.0);
         value = ((distance - align_end + first_dash) % pattern_length
             + pattern_length) % pattern_length;
     } else {
