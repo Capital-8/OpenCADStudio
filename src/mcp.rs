@@ -37,9 +37,10 @@ const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
 /// joined the execute ops; the action list gained `extraction_outdated`,
 /// `print_all` and `recovery_accept`.
 /// `input` gained `handles`, so a selection prompt can be handed a set
-/// without a round trip through `select`.
+/// without a round trip through `select`; the dialog actions gained
+/// `dialog_discard` and `dialog_cancel`.
 #[cfg(test)]
-const TOOL_SCHEMA_DIGEST: &str = "3a58372ac5208b1f9c3821682fedc57d3e55ca4ea4f77eb60bc5433c68647096";
+const TOOL_SCHEMA_DIGEST: &str = "25f1f800ae703de0b35254555840852f1a39b2c199dd21b79a3ecefdab8b6b4b";
 const MAX_REQUEST: usize = 1_048_576;
 const MAX_RESPONSE: u64 = 16 * 1024 * 1024;
 const CACHE_TTL_MS: u64 = 3_600_000;
