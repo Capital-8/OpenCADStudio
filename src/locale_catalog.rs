@@ -2268,6 +2268,7 @@ pub(super) fn message_attribute(source: &str) -> Option<(&'static str, &'static 
         "Manage..." => Some(("ui", "manage-menu-period-title-case")),
         "Manage…" => Some(("ui", "manage-picker-title-case")),
         "Manual heights" => Some(("properties", "manual-heights")),
+        "Break height" => Some(("properties", "break-height")),
         "Manual positions" => Some(("properties", "manual-positions")),
         "Map Size" => Some(("properties", "map-size")),
         "Markup" => Some(("annotate", "markup")),

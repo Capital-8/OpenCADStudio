@@ -5372,6 +5372,7 @@ properties =
     .major-axis-vector-z = Major axis vector Z
     .major-radius = Major radius
     .manual-heights = Manual heights
+    .break-height = Break height
     .manual-positions = Manual positions
     .map-size = Map Size
     .mass-properties = Mass Properties
