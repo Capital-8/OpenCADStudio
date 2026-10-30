@@ -509,7 +509,17 @@ impl OpenCADStudio {
             }
 
             "CENTERRESET" | "_CENTERRESET_APPLY" => {
-                let handles = self.tabs[i].scene.selected_handles_in_order();
+                let handles: Vec<_> = self.tabs[i]
+                    .scene
+                    .selected_handles_in_order()
+                    .into_iter()
+                    .filter(|handle| self.tabs[i].scene.is_center_object(*handle))
+                    .collect();
+                self.tabs[i].scene.deselect_all();
+                // An empty selection ends the command without a report.
+                if handles.is_empty() {
+                    return Some(self.finish_dispatch(cmd));
+                }
                 self.push_undo_snapshot(i, "CENTERRESET");
                 let count = self.tabs[i].scene.reset_centerlines(&handles)
                     + self.tabs[i].scene.reset_center_marks(&handles);
@@ -528,7 +538,16 @@ impl OpenCADStudio {
             }
 
             "CENTERDISASSOCIATE" | "_CENTERDISASSOCIATE_APPLY" => {
-                let handles = self.tabs[i].scene.selected_handles_in_order();
+                let handles: Vec<_> = self.tabs[i]
+                    .scene
+                    .selected_handles_in_order()
+                    .into_iter()
+                    .filter(|handle| self.tabs[i].scene.is_center_object(*handle))
+                    .collect();
+                self.tabs[i].scene.deselect_all();
+                if handles.is_empty() {
+                    return Some(self.finish_dispatch(cmd));
+                }
                 let was_associated: Vec<(bool, bool)> = handles
                     .iter()
                     .filter_map(|handle| self.tabs[i].scene.center_object_state(*handle))

@@ -265,7 +265,7 @@ impl CadCommand for CenterMarkCommand {
             self.layer.active = false;
             return CmdResult::NeedPoint;
         }
-        CmdResult::Cancel
+        CmdResult::Done
     }
     fn on_escape(&mut self) -> CmdResult {
         CmdResult::Cancel
@@ -374,7 +374,7 @@ impl CadCommand for CenterReassociateCommand {
         CmdResult::NeedPoint
     }
     fn on_enter(&mut self) -> CmdResult {
-        CmdResult::Cancel
+        CmdResult::Done
     }
     fn on_escape(&mut self) -> CmdResult {
         CmdResult::Cancel

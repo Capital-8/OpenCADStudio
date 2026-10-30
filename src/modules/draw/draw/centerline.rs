@@ -261,7 +261,7 @@ impl CadCommand for CenterLineCommand {
             self.layer.active = false;
             return CmdResult::NeedPoint;
         }
-        CmdResult::Cancel
+        CmdResult::Done
     }
 
     fn on_escape(&mut self) -> CmdResult {
