@@ -15,7 +15,17 @@ fn to_render(line: &Line) -> RenderEntity {
     if let Some(association) =
         codec::entities::CenterMarkAssociation::read(&line.common.extended_data)
     {
-        let segments = crate::scene::centermark::render_segments(&association);
+        // Each line of the mark starts its own linetype pattern, running
+        // along the mark's axes as the stored block lines do, so an extension
+        // shorter than one period draws as one solid dash.
+        // ponytail: the cross shares the entity linetype (the stored cross is
+        // Continuous); visible only once a cross outgrows one pattern period.
+        let axes = crate::scene::centermark::dvec(association.plane_x)
+            + crate::scene::centermark::dvec(association.plane_y);
+        let segments: Vec<_> = crate::scene::centermark::render_segments(&association)
+            .into_iter()
+            .map(|[a, b]| if (b - a).dot(axes) < 0.0 { [b, a] } else { [a, b] })
+            .collect();
         let mut points = Vec::with_capacity(segments.len() * 3);
         let mut key_vertices = Vec::with_capacity(segments.len() * 2 + 1);
         let mut tangent_geoms = Vec::with_capacity(segments.len());
@@ -44,7 +54,7 @@ fn to_render(line: &Line) -> RenderEntity {
         key_vertices.push([center.x, center.y, center.z]);
         return RenderEntity {
             pick_tris: Vec::new(),
-            object: RenderObject::Lines(points),
+            object: RenderObject::SegmentedLines(points),
             snap_pts: Vec::new(),
             tangent_geoms,
             key_vertices,
