@@ -206,6 +206,7 @@ fn background_mutation(op: &str) -> bool {
             | "group_create"
             | "undo"
             | "redo"
+            | "save"
     )
 }
 
