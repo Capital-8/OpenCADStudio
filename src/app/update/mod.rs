@@ -11615,7 +11615,9 @@ impl OpenCADStudio {
             Message::PluginInstalled(Ok(id)) => {
                 self.marketplace_status =
                     crate::tf!("Installed '{id}'. Restart to load it.").into_owned();
-                self.plugin_load_errors.remove(&id);
+                for id in id.split(", ") {
+                    self.plugin_load_errors.remove(id);
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     self.external_plugins = crate::plugin::external::discover();

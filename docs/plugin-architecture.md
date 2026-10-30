@@ -678,8 +678,14 @@ dynamic libraries:
 - **Enable/disable** — toggles a loaded plugin's ribbon tab + dispatch without
   uninstalling.
 
-One linked repository is one marketplace entry. Publish separate plugins from
-separate repositories so release and update histories stay unambiguous.
+One linked repository is one marketplace entry. A release can carry more
+plugins than its own: every `<anything>-<platform>.zip` asset (e.g.
+`open-infra-civiel-windows-x86_64.zip`) is a bundle holding one `plugin.toml`
+plus library per plugin, at the zip's root or in one folder per plugin, and
+*Install* installs them along with the release's own library and
+`plugin.toml`. Each plugin keeps its own id, version and API check, and gets
+its own entry under the installed plugins. The release's own `plugin.toml`
+asset is what the release list reads, so keep it on every release.
 
 ---
 
