@@ -10,7 +10,7 @@ use iced::Task;
 fn check_custom_names(properties: &[(String, String)]) -> Result<(), String> {
     let mut seen = std::collections::HashSet::new();
     for (index, (name, _)) in properties.iter().enumerate() {
-        // Validated trimmed and case-folded, as AutoCAD does; stored as typed.
+        // Validated trimmed and case-folded; stored as typed.
         let key = name.trim().to_lowercase();
         if key.is_empty() {
             return Err(crate::tr!(

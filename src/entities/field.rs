@@ -233,8 +233,8 @@ fn num(v: f64) -> String {
     format!("{v:.6}")
 }
 
-/// The property a `CustomDP.<Name>` field variable names (AutoCAD's code for
-/// a custom drawing property); the engine hands unknown variables to the host.
+/// The property a `CustomDP.<Name>` field variable names (the stored code
+/// for a custom drawing property).
 pub fn custom_property_name(variable: &str) -> Option<&str> {
     let variable = variable.trim();
     let prefix = variable.get(..CUSTOM_PROPERTY_PREFIX.len())?;
@@ -253,14 +253,6 @@ pub fn custom_property_code(name: &str) -> String {
 
 /// A system variable's value as a field shows it.
 pub fn sysvar(document: &Document, name: &str) -> Option<String> {
-    if let Some(property) = custom_property_name(name) {
-        return document
-            .summary_info
-            .custom_properties
-            .iter()
-            .find(|(stored, _)| stored.eq_ignore_ascii_case(property))
-            .map(|(_, value)| value.clone());
-    }
     let h = &document.header;
     let path = document.source_path.as_deref().unwrap_or("");
     let (folder, file) = match path.rfind(['/', '\\']) {

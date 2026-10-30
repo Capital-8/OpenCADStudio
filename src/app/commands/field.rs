@@ -632,7 +632,7 @@ mod tests {
         assert!(state.entries().iter().all(|row| row.0 != "Client"));
     }
 
-    /// S6: choosing a property writes exactly the AutoCAD field code.
+    /// S6: choosing a property writes exactly the stored field code.
     #[test]
     fn choosing_a_custom_property_inserts_its_field_code() {
         let mut app = app_with_custom_properties();
