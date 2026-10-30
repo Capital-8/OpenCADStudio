@@ -1254,9 +1254,36 @@ impl<'a> HostSession<'a> {
     }
 
     pub fn push_undo(&mut self, label: &str) {
+        if self.undo_group_open() {
+            return;
+        }
         self.app.push_undo_snapshot(self.tab, label);
         if let Some(pending) = self.app.tabs[self.tab].history.pending.as_mut() {
             pending.plugin_owned = true;
+        }
+    }
+
+    fn undo_group_open(&self) -> bool {
+        self.app.tabs[self.tab]
+            .history
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.held)
+    }
+
+    pub fn begin_undo_group(&mut self, label: &str) {
+        self.push_undo(label);
+        if let Some(pending) = self.app.tabs[self.tab].history.pending.as_mut() {
+            pending.held = true;
+        }
+    }
+
+    pub fn end_undo_group(&mut self) {
+        if self.undo_group_open() {
+            if let Some(pending) = self.app.tabs[self.tab].history.pending.as_mut() {
+                pending.held = false;
+            }
+            self.app.finish_pending_history(self.tab);
         }
     }
 
@@ -3850,6 +3877,12 @@ impl HostApi for HostSession<'_> {
     }
     fn push_undo(&mut self, label: &str) {
         self.push_undo(label)
+    }
+    fn begin_undo_group(&mut self, label: &str) {
+        self.begin_undo_group(label)
+    }
+    fn end_undo_group(&mut self) {
+        self.end_undo_group()
     }
     fn set_dirty(&mut self) {
         self.set_dirty()

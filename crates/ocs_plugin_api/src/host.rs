@@ -1274,6 +1274,16 @@ pub trait HostApi {
 
     // ── Undo / dirty ────────────────────────────────────────────────────────
     fn push_undo(&mut self, label: &str);
+    /// Open one undo step that spans several messages (API v14): every edit
+    /// until [`HostApi::end_undo_group`] joins it, including writes a worker
+    /// thread sends through [`HostApi::plugin_request_sender`], and
+    /// `push_undo` inside it opens nothing new. The step also closes when the
+    /// user runs a command of their own. The default is [`HostApi::push_undo`].
+    fn begin_undo_group(&mut self, label: &str) {
+        self.push_undo(label);
+    }
+    /// Close the step [`HostApi::begin_undo_group`] opened.
+    fn end_undo_group(&mut self) {}
     fn set_dirty(&mut self);
 
     // ── Command line ────────────────────────────────────────────────────────

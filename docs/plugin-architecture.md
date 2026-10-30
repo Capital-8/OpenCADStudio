@@ -174,7 +174,7 @@ concrete types:
 | XDATA | `read_record(handle, app)`, `write_record(handle, record)`, `remove_record(handle, app)` — keyed by entity handle; `write_record` registers the APPID so data round-trips through DWG/DXF |
 | Tab state | object-safe `plugin_state_any*` helpers exist for in-process use; out-of-process plugins should keep state inside the plugin crate because `dyn Any` is not serializable |
 | Command line | `push_info`, `push_output`, `push_error` |
-| Undo / dirty | `push_undo`, `set_dirty` |
+| Undo / dirty | `push_undo`, `set_dirty`; `begin_undo_group(label)` / `end_undo_group()` (V14) make one undo step of edits spread over several messages, worker-thread writes included |
 | Tab | `tab_index()` |
 | Document identity (V5) | `document_path(tab_id)` returns the saved path for a document tab. |
 | Notifications (V4) | `on_notification` receives `HostNotification::SelectionChangedV4 { tab_id, handles }` when the active tab's selection changes, plus `DocumentChangedV4` / `DocumentTabClosed`. |

@@ -428,7 +428,12 @@ impl OpenCADStudio {
                 .active_cmd
                 .as_ref()
                 .is_some_and(|command| command.groups_undo());
-            if !self.joins_plugin_scope(i) && !grouping {
+            let held = self.tabs[i]
+                .history
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.held);
+            if !self.joins_plugin_scope(i) && !grouping && !held {
                 self.finish_pending_history(i);
             }
         }
@@ -469,6 +474,7 @@ impl OpenCADStudio {
             parametric_constraints_before: self.tabs[i].scene.parametric_constraints.clone(),
             plugin_owned: false,
             keep_empty: false,
+            held: false,
         });
     }
 

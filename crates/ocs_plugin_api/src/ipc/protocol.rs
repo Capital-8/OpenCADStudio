@@ -325,6 +325,13 @@ pub enum PluginRequest {
         panel_id: String,
         show: Option<bool>,
     },
+    /// V14: open one undo step that later messages join until
+    /// [`PluginRequest::EndUndoGroup`].
+    BeginUndoGroup {
+        label: String,
+    },
+    /// V14: close the step [`PluginRequest::BeginUndoGroup`] opened.
+    EndUndoGroup,
 }
 
 /// Responses the host sends back for `PluginRequest`.
