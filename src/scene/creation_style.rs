@@ -182,8 +182,13 @@ fn apply_text_defaults(doc: &Document, entity: &mut EntityType) {
     if style_name.trim().is_empty() {
         style_name.clone_from(&active.style_name);
     }
-    let resolved =
+    let mut resolved =
         named_text_style(doc, style_name).unwrap_or_else(|| TextStyle::new(style_name.clone()));
+    // An annotative style's height is on paper; the creating command already
+    // gave the entity its model height at the current annotation scale.
+    if resolved.annotative {
+        resolved.height = 0.0;
+    }
     match entity {
         EntityType::Text(text) => {
             if resolved.height > 1.0e-9 {

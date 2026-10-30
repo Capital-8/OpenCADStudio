@@ -6924,12 +6924,16 @@ fn style_width_factor(style_name: &str, document: &Document) -> f64 {
 }
 
 /// The dimension's properties for its synthesized text, less its extension
-/// dictionary. The text height already carries the annotation scale; with the
-/// dimension's per-scale contexts the text would resolve as annotative itself
-/// and scale a second time at every scale but the default one. (#1939)
+/// dictionary and annotative markers. The text height already carries the
+/// annotation scale; with the dimension's per-scale contexts or flag the text
+/// would resolve as annotative itself and scale a second time at every scale
+/// but the default one. (#1939)
 fn synthesized_text_common(base: &DimensionBase) -> codec::entities::EntityCommon {
     let mut common = base.common.clone();
     common.xdictionary_handle = None;
+    for marker in ["AcadAnnotative", "AcAnnoPO", "AcAnnotativeData"] {
+        common.extended_data.remove_record(marker);
+    }
     common
 }
 
