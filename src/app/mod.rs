@@ -5264,6 +5264,8 @@ pub enum Message {
     RibbonDimLayer(String),
     /// Annotate > Leaders: MLEADERLAYER picked (empty: Use Current).
     RibbonMLeaderLayer(String),
+    /// Annotate > Centerlines: CENTERLAYER picked (empty: Use Current).
+    RibbonCenterLayer(String),
     /// Result of the ATTACH file picker.
     AttachPickResult(Result<std::path::PathBuf, String>),
     /// An edit in the Attach External Reference dialog.
