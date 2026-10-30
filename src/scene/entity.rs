@@ -2556,6 +2556,13 @@ impl Scene {
             if path.flags.bits() & 8 != 0 {
                 continue;
             }
+            // Skip loops flagged not closed (flag bit 5). AutoCAD leaves such a
+            // loop out of the hatch even when its edges meet: it neither fills
+            // it nor cuts it as an island. Filling it painted areas AutoCAD
+            // never shows.
+            if path.flags.is_not_closed() {
+                continue;
+            }
             let mut edge_polys: Vec<Vec<[f64; 2]>> = Vec::new();
             for edge in &path.edges {
                 if let Some(curve) = crate::entities::hatch::edge_curve(edge) {
