@@ -28,7 +28,9 @@
 //!   up to 3 in the station, exactly a clamped Bernstein form);
 //! - everything else stages measured-deviation LwPolyline chords within
 //!   the declared tolerance (seeded by the driving quantity's realized
-//!   rate, refined by measurement — never a guessed shape);
+//!   rate, refined by measurement — never a guessed shape); the plan
+//!   integrator carries a swing budget (65 536 half-radian sub-intervals)
+//!   and a law past it refuses — a hang cannot hide behind legal data;
 //! - chains are audited seam-to-seam against the record model's continuity
 //!   tolerances (points 1e-6 m, plan directions 1e-9 rad, profile
 //!   gradients 1e-6) and refused with the audited pair named; a chain
@@ -65,6 +67,16 @@ pub const SEAM_GRADIENT_EPS: f64 = 1.0e-6;
 /// this, the tolerance is judged unattainable and staging refuses instead
 /// of looping.
 const MAX_CHORDS_PER_SEGMENT: usize = 50_000;
+
+/// The plan integrator's swing budget (the caps law applied to the
+/// quadrature): the sub-interval count is one per half-radian of tangent
+/// swing, at most this many. A declared plan law whose total tangent swing
+/// over one segment exceeds the budget refuses at validation — a 16-node
+/// quadrature across more sub-intervals than this is a hanging path, not a
+/// curve the host agrees to evaluate (the structural gates alone allow the
+/// data; the budget keeps the surface hang-free). 65536 half-radian
+/// windows = ~10 000 full turns per segment, far past any real alignment.
+const MAX_GL_SUB_INTERVALS: usize = 65_536;
 
 /// Normalize a start direction into [0, 2*pi). Declared directions are
 /// +-2*pi-legal (any winding is accepted by the record layer); the engine
@@ -398,9 +410,25 @@ fn validate_segment(plane: ParametricPlane, segment: &ParametricSegment) -> Resu
     if let Some(cross) = &def.cross_slope {
         validate_ramp(cross).map_err(|e| format!("the cross-slope ramp is not structural: {e}"))?;
     }
+    let ramp = PreparedRamp::new(&def.ramp);
     let theta_start = match plane {
         // The plan plane's bearing normalizes once at the segment boundary.
-        ParametricPlane::Plan => normalize_angle(segment.start_direction),
+        ParametricPlane::Plan => {
+            // The integrator's swing budget: the segment's total tangent
+            // deflection bounds the sub-interval count one-to-one; a law
+            // past the budget is a hang, not a curve — refuse here where
+            // every evaluation path funnels through (the audit, the
+            // sampling, the staging).
+            let swing = (def.length * ramp.integral(1.0)).abs();
+            if swing > MAX_GL_SUB_INTERVALS as f64 * PI * 0.5 {
+                return Err(format!(
+                    "the plan law's tangent swing ({swing:.0} rad over this segment) exceeds the \
+                     integrator's swing budget ({MAX_GL_SUB_INTERVALS} sub-intervals); refuse the \
+                     segment, refuse the chain"
+                ));
+            }
+            normalize_angle(segment.start_direction)
+        }
         // The profile plane's direction is the continuity read; the angle
         // carries over as declared.
         ParametricPlane::Profile => segment.start_direction,
@@ -408,7 +436,7 @@ fn validate_segment(plane: ParametricPlane, segment: &ParametricSegment) -> Resu
     Ok(Vitals {
         length: def.length,
         theta_start,
-        ramp: PreparedRamp::new(&def.ramp),
+        ramp,
     })
 }
 
@@ -1620,6 +1648,27 @@ mod tests {
         seg.start_direction = f64::NAN;
         let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
         assert!(err.contains("start direction is not finite"), "{err}");
+    }
+
+    #[test]
+    fn plan_law_swings_beyond_the_integrator_budget_refuses() {
+        // kappa = 1e4 over 40 m swings the tangent ~4e5 rad inside ONE
+        // segment: structurally legal ramp data, but past the quadrature's
+        // sub-interval budget the host refuses instead of spinning the
+        // session away (the chord-seed estimate still sits under its own
+        // cap for this fixture, so the refusal comes from the swing law —
+        // the budget the chord cap's shape twins).
+        let seg = segment_of(
+            ParametricPlane::Plan,
+            def_of(40.0, ramp_const(1.0e4)),
+            [0.0, 0.0],
+            0.0,
+        );
+        let err = audit_chain(&single_chain(ParametricPlane::Plan, &seg)).unwrap_err();
+        assert!(
+            err.contains("exceeds the integrator's swing budget"),
+            "{err}"
+        );
     }
 
     // ==== grip-edit re-derivation =========================================

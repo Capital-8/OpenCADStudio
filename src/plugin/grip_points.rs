@@ -494,7 +494,6 @@ pub(crate) struct DescriptorGripDrag {
     pub refusal_noted: bool,
 }
 
-
 /// The currently hovered plugin-declared grip (drives hover highlighting
 /// through the same overlay the built-in grip hover uses).
 #[derive(Clone, Debug, PartialEq, Eq)]

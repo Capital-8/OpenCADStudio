@@ -897,8 +897,10 @@ Landed in this branch:
       vocabulary (polynomial/piecewise/sampled); the exact carriers derive
       generically (the constant plan classes as Line/Arc, the profile
       polynomial-slope class as the one from-end-states Hermite), table
-      laws stage measured chords, and the Sampled arm carries the
-      stage-time cumulative-integral table.
+      laws stage measured chords, the Sampled arm carries the stage-time
+      cumulative-integral table, and the plan integrator's swing budget
+      (65 536 half-radian sub-intervals) keeps the surface hang-free past
+      legal-but-absurd curvature data.
 
 ---
 
