@@ -37,9 +37,9 @@ rfd = "0.17"
 clap = { version = "4", features = ["derive", "string"] }
 env_logger = "0.11"
 log = "0.4"
-codec = { package = "opencaddocument", git = "https://github.com/HakanSeven12/opencaddocument.git", rev = "fdd1d67", features = ["serde"] }
-kernel = { package = "opencadkernel", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "5735afa", features = ["acis", "offset"] }
-kernel-constraints = { package = "opencadkernel-constraints", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "5735afa" }
+codec = { package = "opencaddocument", git = "https://github.com/HakanSeven12/opencaddocument.git", rev = "be6a771", features = ["serde"] }
+kernel = { package = "opencadkernel", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "3a77b22", features = ["acis", "offset"] }
+kernel-constraints = { package = "opencadkernel-constraints", git = "https://github.com/HakanSeven12/opencadkernel.git", rev = "3a77b22" }
 graph = { package = "opencadgraph", git = "https://github.com/HakanSeven12/opencadgraph.git", rev = "5e4dc20" }
 dwg-thumbnailer = { path = "crates/dwg-thumbnailer" }
 # Shared SAVE serialization dispatch + web-worker wire format: one
@@ -336,5 +336,5 @@ name = "integration"
 path = "tests/integration.rs"
 
 [patch."https://github.com/HakanSeven12/opencadkernel.git"]
-opencadkernel = { git = "https://github.com/ramox81/cadkernel.git", rev = "412ca55" }
-opencadkernel-constraints = { git = "https://github.com/ramox81/cadkernel.git", rev = "412ca55" }
+opencadkernel = { git = "https://github.com/ramox81/cadkernel.git", rev = "18dbdb0" }
+opencadkernel-constraints = { git = "https://github.com/ramox81/cadkernel.git", rev = "18dbdb0" }

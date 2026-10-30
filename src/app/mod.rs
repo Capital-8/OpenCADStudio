@@ -56,11 +56,14 @@ mod measurement;
 mod model_ops;
 mod mtext_editor;
 mod navigation;
+#[cfg(test)]
+mod object_isolation_tests;
 pub(crate) mod node_graph;
 mod options_session;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_host;
 mod presspull_ops;
+mod purge_dialog;
 mod rename_dialog;
 mod properties;
 mod quick_calc;
@@ -702,6 +705,9 @@ pub(super) struct OpenCADStudio {
     block_definition_open_editor: Option<String>,
     block_edit_picker: Option<crate::ui::window::block_edit_picker::State>,
     rename_dialog: Option<crate::ui::window::rename::State>,
+    purge_dialog: Option<crate::ui::window::purge::State>,
+    /// The Purge dialog's choice, for the PURGE it runs.
+    purge_only: Option<purge_dialog::PurgeOnly>,
     /// Select Similar settings being edited.
     select_similar_settings: Option<u16>,
     block_save_as: Option<crate::ui::window::block_save_as::State>,
@@ -1118,6 +1124,10 @@ pub(super) struct OpenCADStudio {
     )>,
     /// Document dirty state before the live grip mutation began.
     grip_dirty_before: Option<bool>,
+    /// Where the press that picked up the active grip went down: released
+    /// near it, the press was a click and the grip stays hot for a second
+    /// click to place it.
+    grip_engage_press: Option<Point>,
     /// Frozen pre-drag wire geometry used only as a visual/reference snapshot.
     ///
     /// It is deliberately NOT added to normal snap candidates: the live entity is
@@ -1883,6 +1893,13 @@ pub(super) struct OpenCADStudio {
     // ── DimStyle Dialog ───────────────────────────────────────────────────
     /// Name of the style currently shown in the dialog.
     dimstyle_selected: String,
+    /// The arrowhead field whose User Arrow block list is open.
+    dimstyle_user_arrow: Option<&'static str>,
+    /// The next EnterViewport moves to another viewport within a running
+    /// command (Ctrl+R) and must not cancel it.
+    viewport_switch_keeps_command: bool,
+    /// CHSPACE from paper space waiting for its target viewport: the objects.
+    chspace_pending: Option<Vec<codec::Handle>>,
     /// Which colour field currently has its expanded palette open (if any).
     ds_color_open: Option<DsField>,
     /// Active property group in the dimension style manager.
@@ -2823,6 +2840,7 @@ pub enum ModalKind {
     BlockEditChanges,
     BlockEditPicker,
     Rename,
+    Purge,
     SelectSimilarSettings,
     BlockSaveAs,
     BlockVisibility,
@@ -3554,6 +3572,7 @@ pub enum Message {
     BlockEditPickerSelect(String),
     BlockEditPickerApply,
     Rename(crate::ui::window::rename::RenameMsg),
+    Purge(crate::ui::window::purge::PurgeMsg),
     /// Select Similar settings: flip one SELECTSIMILARMODE bit.
     SelectSimilarSettingsToggle(u16),
     SelectSimilarSettingsOk,
@@ -4909,6 +4928,9 @@ pub enum Message {
     PrintAllOptions,
     /// Save the selected layouts as one multi-page PDF.
     PrintAllPdf,
+    /// Save the selected layouts as one multi-page PDF at a given path
+    /// (automation: no file picker).
+    PrintAllPdfTo(std::path::PathBuf),
     /// Callback after the multi-page PDF path is picked or cancelled.
     PrintAllPdfPath(Option<std::path::PathBuf>),
     /// Send the selected layouts to the configured printer as one job.
@@ -5423,6 +5445,8 @@ impl OpenCADStudio {
             block_definition_open_editor: None,
             block_edit_picker: None,
             rename_dialog: None,
+            purge_dialog: None,
+            purge_only: None,
             select_similar_settings: None,
             block_save_as: None,
             block_visibility: None,
@@ -5612,6 +5636,7 @@ impl OpenCADStudio {
             grip_originals: Vec::new(),
             grip_history_originals: Vec::new(),
             grip_dirty_before: None,
+            grip_engage_press: None,
             grip_reference_wires: Vec::new(),
             grip_text_verts: Vec::new(),
             grip_text_slide: false,
@@ -5966,6 +5991,9 @@ impl OpenCADStudio {
             mls_block_scale_z: String::new(),
             // DimStyle dialog
             dimstyle_selected: "Standard".to_string(),
+            dimstyle_user_arrow: None,
+            viewport_switch_keeps_command: false,
+            chspace_pending: None,
             ds_color_open: None,
             dimstyle_tab: 0,
             dimstyle_compare: String::new(),

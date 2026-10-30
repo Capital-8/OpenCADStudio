@@ -97,6 +97,7 @@ pub(crate) fn property_json(p: &crate::scene::model::object::Property) -> Value 
 }
 pub(super) const NAMES: &[&str] = &[
     "close_modal",
+    "recovery_accept",
     "conversion_loss_save_anyway",
     "conversion_loss_back",
     // Native-only: the "changed outside" dialog does not exist in the web
@@ -121,6 +122,7 @@ pub(super) const NAMES: &[&str] = &[
     "tds_material_dialog",
     "tds_map_dialog",
     "extraction_outdated",
+    "print_all",
     "data_link_manager",
     "data_extraction",
     "refedit_dialog",
@@ -1325,8 +1327,16 @@ impl OpenCADStudio {
     }
     pub(super) fn control_ui_action(&mut self, req: &Value) -> Result<Task<Message>, Value> {
         let name = string(req, "name")?;
+        // Without a prompt there is no failed open to retry.
+        if name == "recovery_accept"
+            && self.active_modal != Some(crate::app::ModalKind::RecoveryPrompt)
+        {
+            return Ok(Task::none());
+        }
         let msg = match name {
             "close_modal" => Message::CloseModal,
+            // The recovery prompt's Recover button; `close_modal` declines.
+            "recovery_accept" => Message::RecoveryAttempt,
             // The conversion-loss warning's choices: save with the losses it
             // lists, or drop the held-back save.
             "conversion_loss_save_anyway" => Message::ConversionLossProceed,
@@ -2773,6 +2783,25 @@ impl OpenCADStudio {
                     "skip" => Message::ExtractionOutdated(C::Skip),
                     "skip_all" => Message::ExtractionOutdated(C::SkipAll),
                     "close" => Message::CloseModal,
+                    _ => return Err(failure("invalid_value", spec)),
+                }
+            }
+            // The Print All (PUBLISH) window: "open", "pdf=<path>" (the PDF
+            // button with its file already picked), "print" or "close". Both
+            // outputs run the DXEVAL publish check first.
+            "print_all" => {
+                let spec = string(req, "value")?;
+                let open = self.active_modal == Some(crate::app::ModalKind::PrintAll);
+                match spec.split_once('=') {
+                    _ if spec == "open" => Message::PrintAllOpen,
+                    _ if !open => {
+                        return Err(failure("no_dialog", "The Print All window is not open"));
+                    }
+                    Some(("pdf", path)) if !path.is_empty() => {
+                        Message::PrintAllPdfTo(std::path::PathBuf::from(path))
+                    }
+                    _ if spec == "print" => Message::PrintAllPrint,
+                    _ if spec == "close" => Message::CloseModal,
                     _ => return Err(failure("invalid_value", spec)),
                 }
             }

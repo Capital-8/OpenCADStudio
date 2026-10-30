@@ -1167,6 +1167,7 @@ impl Scene {
                     self.record_undo_reference_designation_before(h);
                 }
             }
+            self.remove_image_definition_reactor(h);
             self.delete_solid_history(h);
             if let Some(settings_handle) = settings_handle {
                 self.document.objects.remove(&settings_handle);
@@ -1302,6 +1303,14 @@ impl Scene {
             if self.is_recording_undo() {
                 self.record_undo_before(handle, None);
             }
+            // OOPS restores entities without replaying the erased object images.
+            let entity = if matches!(entity.as_ref(), EntityType::RasterImage(_)) {
+                let mut image = (*entity).clone();
+                self.ensure_image_definition(&mut image);
+                Arc::new(image)
+            } else {
+                entity
+            };
             if self.document.restore_entity_arc(entity).is_some() {
                 self.reseed_derived_caches(handle);
                 restored.push(handle);

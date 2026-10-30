@@ -926,7 +926,13 @@ impl OpenCADStudio {
 
             // -DATAEXTRACTION: run a saved extraction from the command line.
             "-DATAEXTRACTION" => {
-                let command = crate::modules::annotate::data_extract::TemplateCommand;
+                let command = crate::modules::annotate::data_extract::TemplateCommand {
+                    drawing_dir: self.tabs[i]
+                        .current_path
+                        .as_deref()
+                        .and_then(std::path::Path::parent)
+                        .map(std::path::Path::to_path_buf),
+                };
                 self.command_line.push_info(&command.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(command));
             }

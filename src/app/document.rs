@@ -1144,4 +1144,7 @@ pub(super) struct PendingHistorySnapshot {
     pub(super) plugin_owned: bool,
     /// Kept as an undo step even when nothing changed.
     pub(super) keep_empty: bool,
+    /// A plugin's undo group: message boundaries leave it open until the
+    /// plugin ends it or the user runs a command.
+    pub(super) held: bool,
 }

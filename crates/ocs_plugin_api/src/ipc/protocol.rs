@@ -325,6 +325,17 @@ pub enum PluginRequest {
         panel_id: String,
         show: Option<bool>,
     },
+    /// V14: open one undo step that later messages join until
+    /// [`PluginRequest::EndUndoGroup`].
+    BeginUndoGroup {
+        label: String,
+    },
+    /// V14: close the step [`PluginRequest::BeginUndoGroup`] opened.
+    EndUndoGroup,
+    /// V14: a page of the entities matching a control-API `query` JSON.
+    QueryEntities {
+        query: String,
+    },
 }
 
 /// Responses the host sends back for `PluginRequest`.
@@ -393,6 +404,8 @@ pub enum PluginResponse {
     PanelRegistered(bool),
     PanelUpdated(bool),
     PanelToggled(bool),
+    /// V14: answer to [`PluginRequest::QueryEntities`].
+    EntityPage(Result<crate::host::EntityPage, String>),
 }
 
 /// Messages sent from the host to the plugin runner.

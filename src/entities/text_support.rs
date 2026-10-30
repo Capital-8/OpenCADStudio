@@ -1430,6 +1430,14 @@ pub fn line_total_width(
     x - line_start_x
 }
 
+/// A run's inline colour index, when it has one.
+fn inline_aci(state: &RunState) -> Option<u8> {
+    match state.color {
+        Some(InlineColor::Aci(index)) => Some(index),
+        _ => None,
+    }
+}
+
 pub fn resolve_inline_color(c: &InlineColor) -> Option<[f32; 3]> {
     match c {
         InlineColor::Aci(idx) => aci_to_rgb(*idx).map(|(r, g, b)| {
@@ -2518,6 +2526,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                                     oblique,
                                     tracking: atom.state.tracking,
                                     bold: atom.state.bold,
+                                    aci: inline_aci(&atom.state),
                                 }),
                             });
                             let gx = line_lx + col_dx;
@@ -2596,6 +2605,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                                 oblique,
                                 tracking,
                                 bold: atom.state.bold,
+                                aci: inline_aci(&atom.state),
                             }),
                         });
                         // Underline / overline / strike are lines, not glyphs;
@@ -2798,6 +2808,7 @@ pub fn layout_mtext(opts: &MTextRenderOpts) -> MTextLayout {
                                 oblique,
                                 tracking,
                                 bold: atom.state.bold,
+                                aci: inline_aci(&atom.state),
                             }),
                         });
                     };

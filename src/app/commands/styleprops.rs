@@ -259,24 +259,9 @@ impl OpenCADStudio {
             }
 
             // ── PURGE unused definitions ──────────────────────────────────
-            // Bare PURGE prompts with the category options as clickable
-            // keywords; PURGE <sub> (typed, clicked or scripted) runs directly.
-            "PURGE" => {
-                use crate::command::KeywordCommand;
-                let c = KeywordCommand::new(
-                    "PURGE",
-                    "PURGE  [All / Blocks / LAyers / LineTypes / STyles]:",
-                    vec![
-                        ("All", "ALL", None),
-                        ("Blocks", "BLOCKS", None),
-                        ("LAyers", "LAYERS", None),
-                        ("LineTypes", "LINETYPES", None),
-                        ("STyles", "STYLES", None),
-                    ],
-                );
-                self.command_line.push_info(&c.prompt());
-                self.tabs[i].active_cmd = Some(Box::new(c));
-            }
+            // Bare PURGE opens the Purge dialog (-PURGE asks on the command
+            // line); PURGE <sub> (typed or scripted) runs directly.
+            "PURGE" => self.open_purge_dialog(),
             cmd if cmd.starts_with("PURGE ") => {
                 let sub = cmd
                     .split_whitespace()
@@ -291,6 +276,10 @@ impl OpenCADStudio {
                         .split(',')
                         .any(|p| crate::io::xref_model::wildcard_match(name, p.trim()))
                 };
+                // The Purge dialog's choice, when it runs the command.
+                let only = self.purge_only.take();
+                let chosen =
+                    |kind: usize, name: &str| only.as_ref().is_none_or(|o| o.allows(kind, name));
                 let all = sub == "ALL" || sub.is_empty();
                 let do_layers = all || matches!(sub.as_str(), "LAYERS" | "LAYER" | "LA");
                 let do_styles = all || matches!(sub.as_str(), "TEXTSTYLES" | "STYLES" | "ST");
@@ -307,12 +296,6 @@ impl OpenCADStudio {
                 // (nested blocks, layers, linetypes, styles), so those become
                 // purgeable on the next pass — repeat until a pass removes
                 // nothing, so one PURGE does what re-running it used to.
-                // Xref-dependent records (`Xref|Name`) belong to the xref and
-                // come back with its next reload, so they are never purged —
-                // also when the xref did not resolve and nothing in the host
-                // draws on them (#1929). Blocks get the same rule in
-                // `block_service::protected_reason`.
-                let xref_dependent = |name: &str, flagged: bool| flagged || name.contains('|');
                 let (mut n_layers, mut n_styles, mut n_lts, mut n_blocks) =
                     (0usize, 0usize, 0usize, 0usize);
                 let mut snapshot_pushed = false;
@@ -320,266 +303,25 @@ impl OpenCADStudio {
                     // Collect names in use (immutable borrows — own scope per pass).
                     // An INSERT's attributes live inside it, not in the entity
                     // list, so their layer, style and linetype count separately.
-                    let insert_attributes = || {
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .entities()
-                            .filter_map(|e| match e {
-                                codec::EntityType::Insert(ins) => Some(ins.attributes.iter()),
-                                _ => None,
-                            })
-                            .flatten()
-                    };
-                    let used_layers: rustc_hash::FxHashSet<String> = self.tabs[i]
-                        .scene
-                        .document
-                        .entities()
-                        .map(|e| e.common())
-                        .chain(insert_attributes().map(|a| &a.common))
-                        .filter_map(|common| {
-                            let name = &common.layer;
-                            if name.is_empty() {
-                                None
-                            } else {
-                                Some(name.to_uppercase())
-                            }
-                        })
-                        // The current layer is never purged, empty or not.
-                        .chain(std::iter::once(
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .header
-                                .current_layer_name
-                                .to_uppercase(),
-                        ))
-                        .collect();
-                    // Text styles: entity references plus every dimension
-                    // style's DIMTXSTY — a style only a dimstyle uses is not
-                    // purgeable.
-                    let used_text_styles: rustc_hash::FxHashSet<String> = self.tabs[i]
-                        .scene
-                        .document
-                        .entities()
-                        .filter_map(|e| match e {
-                            codec::EntityType::Text(t) => Some(t.style.clone()),
-                            codec::EntityType::MText(t) => Some(t.style.clone()),
-                            codec::EntityType::AttributeDefinition(a) => Some(a.text_style.clone()),
-                            codec::EntityType::AttributeEntity(a) => Some(a.text_style.clone()),
-                            _ => None,
-                        })
-                        .chain(insert_attributes().map(|a| a.text_style.clone()))
-                        .chain(std::iter::once(
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .header
-                                .current_text_style_name
-                                .clone(),
-                        ))
-                        .chain(
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .dim_styles
-                                .iter()
-                                .map(|ds| ds.dimtxsty.clone()),
-                        )
-                        .filter(|s| !s.is_empty())
-                        .map(|s| s.to_uppercase())
-                        .collect();
-                    // Complex linetypes reach their text and shape styles by handle.
-                    let linetype_styles: rustc_hash::FxHashSet<codec::Handle> = self.tabs[i]
-                        .scene
-                        .document
-                        .line_types
+                    let open_edits: Vec<codec::Handle> = self.tabs[i]
+                        .block_edits
                         .iter()
-                        .flat_map(|lt| lt.elements.iter())
-                        .filter_map(|element| element.complex.as_ref())
-                        .map(|complex| complex.style_handle)
+                        .map(|session| session.br_handle)
                         .collect();
-                    // Multileaders and their styles, and table styles, reach
-                    // their text styles by handle (a table style also by name).
-                    let object_text_styles: rustc_hash::FxHashSet<codec::Handle> = {
-                        let doc = &self.tabs[i].scene.document;
-                        let leaders = doc.entities().filter_map(|e| match e {
-                            codec::EntityType::MultiLeader(m) => Some(m),
-                            _ => None,
-                        });
-                        leaders
-                            .flat_map(|m| [m.text_style_handle, m.context.text_style_handle])
-                            .chain(doc.objects.values().flat_map(|o| {
-                                match o {
-                                    codec::objects::ObjectType::MultiLeaderStyle(style) => {
-                                        vec![style.text_style_handle]
-                                    }
-                                    codec::objects::ObjectType::TableStyle(style) => [
-                                        &style.data_row_style,
-                                        &style.header_row_style,
-                                        &style.title_row_style,
-                                    ]
-                                    .iter()
-                                    .map(|row| row.text_style_handle)
-                                    .collect(),
-                                    _ => vec![],
-                                }
-                            }))
-                            .flatten()
-                            .filter(|h| !h.is_null())
-                            .collect()
-                    };
-                    let table_style_text_styles: rustc_hash::FxHashSet<String> = self.tabs[i]
-                        .scene
-                        .document
-                        .objects
-                        .values()
-                        .filter_map(|o| match o {
-                            codec::objects::ObjectType::TableStyle(style) => Some(style),
-                            _ => None,
-                        })
-                        .flat_map(|style| {
-                            [
-                                &style.data_row_style,
-                                &style.header_row_style,
-                                &style.title_row_style,
-                            ]
-                        })
-                        .filter(|row| !row.text_style_name.is_empty())
-                        .map(|row| row.text_style_name.to_uppercase())
-                        .collect();
-                    // Dimension styles reach their dimension and extension line
-                    // linetypes by handle.
-                    let dimstyle_linetypes: rustc_hash::FxHashSet<codec::Handle> = self.tabs[i]
-                        .scene
-                        .document
-                        .dim_styles
-                        .iter()
-                        .flat_map(|ds| [ds.dimltex_handle, ds.dimltex1_handle, ds.dimltex2_handle])
-                        .filter(|h| !h.is_null())
-                        .collect();
-                    // Linetypes: entity references plus every layer's own
-                    // linetype — a ByLayer entity reaches it through the layer.
-                    let used_linetypes: rustc_hash::FxHashSet<String> = self.tabs[i]
-                        .scene
-                        .document
-                        .entities()
-                        .map(|e| e.common())
-                        .chain(insert_attributes().map(|a| &a.common))
-                        .filter_map(|common| {
-                            let lt = &common.linetype;
-                            if lt.is_empty() || lt == "ByLayer" || lt == "ByBlock" {
-                                None
-                            } else {
-                                Some(lt.clone())
-                            }
-                        })
-                        .chain(
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .layers
-                                .iter()
-                                .map(|l| l.line_type.clone()),
-                        )
-                        .chain(std::iter::once(
-                            self.tabs[i]
-                                .scene
-                                .document
-                                .header
-                                .current_linetype_name
-                                .clone(),
-                        ))
-                        .filter(|s| !s.is_empty())
-                        .map(|s| s.to_uppercase())
-                        .collect();
-
-                    // Build removal lists (still immutable)
-                    let layer_remove: Vec<String> = if do_layers {
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .layers
-                            .iter()
-                            .filter(|l| {
-                                l.name != "0"
-                                    && !xref_dependent(&l.name, l.flags.xref_dependent)
-                                    && !used_layers.contains(&l.name.to_uppercase())
-                            })
-                            .map(|l| l.name.clone())
-                            .collect()
-                    } else {
-                        vec![]
-                    };
-                    let style_remove: Vec<String> = if do_styles {
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .text_styles
-                            .iter()
-                            // Unnamed shape-file records serve complex linetypes
-                            // and are never listed for purging.
-                            .filter(|s| {
-                                !s.name.is_empty()
-                                    && !s.is_shape_file
-                                    && !s.name.eq_ignore_ascii_case("Standard")
-                                    && !xref_dependent(&s.name, s.xref_dependent)
-                                    && !used_text_styles.contains(&s.name.to_uppercase())
-                                    && !linetype_styles.contains(&s.handle)
-                                    && !object_text_styles.contains(&s.handle)
-                                    && !table_style_text_styles.contains(&s.name.to_uppercase())
-                            })
-                            .map(|s| s.name.clone())
-                            .collect()
-                    } else {
-                        vec![]
-                    };
-                    let lt_remove: Vec<String> = if do_lts {
-                        let standard = ["Continuous", "ByLayer", "ByBlock"];
-                        self.tabs[i]
-                            .scene
-                            .document
-                            .line_types
-                            .iter()
-                            .filter(|lt| {
-                                !standard.iter().any(|s| s.eq_ignore_ascii_case(&lt.name))
-                                    && !xref_dependent(&lt.name, lt.xref_dependent)
-                                    && !used_linetypes.contains(&lt.name.to_uppercase())
-                                    && !dimstyle_linetypes.contains(&lt.handle)
-                            })
-                            .map(|lt| lt.name.clone())
-                            .collect()
-                    } else {
-                        vec![]
-                    };
-
-                    // Remove blocks nothing references any more. The shared
-                    // service decides what qualifies — layout/xref/dynamic
-                    // records and open BEDIT sessions are protected, and so is
-                    // every reference kind — so a purge and a delete give the
-                    // same answer.
-                    let block_remove: Vec<String> = if do_blocks {
-                        let open_edits: Vec<codec::Handle> = self.tabs[i]
-                            .block_edits
-                            .iter()
-                            .map(|session| session.br_handle)
-                            .collect();
-                        crate::scene::block_service::purge_candidates(
+                    let [layer_remove, style_remove, lt_remove, block_remove] =
+                        super::purge::purge_pass(
                             &self.tabs[i].scene.document,
                             &open_edits,
-                        )
-                    } else {
-                        vec![]
-                    };
+                            [do_layers, do_styles, do_lts, do_blocks],
+                        );
 
-                    let layer_remove: Vec<String> =
-                        layer_remove.into_iter().filter(|n| wanted(n)).collect();
-                    let style_remove: Vec<String> =
-                        style_remove.into_iter().filter(|n| wanted(n)).collect();
-                    let lt_remove: Vec<String> =
-                        lt_remove.into_iter().filter(|n| wanted(n)).collect();
-                    let block_remove: Vec<String> =
-                        block_remove.into_iter().filter(|n| wanted(n)).collect();
+                    let pick = |list: Vec<String>, kind: usize| -> Vec<String> {
+                        list.into_iter().filter(|n| wanted(n) && chosen(kind, n)).collect()
+                    };
+                    let layer_remove = pick(layer_remove, 0);
+                    let style_remove = pick(style_remove, 1);
+                    let lt_remove = pick(lt_remove, 2);
+                    let block_remove = pick(block_remove, 3);
                     if layer_remove.len()
                         + style_remove.len()
                         + lt_remove.len()

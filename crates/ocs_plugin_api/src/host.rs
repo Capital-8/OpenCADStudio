@@ -39,6 +39,16 @@ pub trait PluginRequestSender: Send + Sync {
     fn request(&self, req: PluginRequest) -> Result<PluginResponse, PluginRequestError>;
 }
 
+/// One page of [`HostApi::query_entities`] (API v14).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityPage {
+    pub entities: Vec<EntityType>,
+    /// Matches in the whole drawing, across all pages.
+    pub count: u64,
+    /// The `offset` of the next page; `None` on the last one.
+    pub next_offset: Option<u64>,
+}
+
 /// Error returned when a plugin worker thread cannot issue a host request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginRequestError(pub String);
@@ -1174,6 +1184,32 @@ macro_rules! export_plugin {
             $crate::API_VERSION
         }
 
+        /// The whole runner, run by this plugin's own build so no Rust type
+        /// crosses the library boundary (API v14 and later). `socket` is the
+        /// host's socket name; returns the process exit code.
+        #[no_mangle]
+        pub extern "C" fn ocs_plugin_run(socket: *const ::std::os::raw::c_char) -> i32 {
+            if socket.is_null() {
+                return 2;
+            }
+            let socket = unsafe { ::std::ffi::CStr::from_ptr(socket) }
+                .to_string_lossy()
+                .into_owned();
+            match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let plugin: ::std::boxed::Box<dyn $crate::host::BuiltinPlugin> =
+                    ::std::boxed::Box::new($ctor);
+                $crate::runner::run_with_plugin(&socket, $crate::API_VERSION, plugin)
+                    .map_err(|e| e.to_string())
+            })) {
+                ::std::result::Result::Ok(::std::result::Result::Ok(())) => 0,
+                ::std::result::Result::Ok(::std::result::Result::Err(e)) => {
+                    eprintln!("[plugin] {e}");
+                    1
+                }
+                ::std::result::Result::Err(_) => 2,
+            }
+        }
+
         #[no_mangle]
         pub extern "C" fn ocs_plugin_register(
         ) -> *mut ::std::boxed::Box<dyn $crate::host::BuiltinPlugin> {
@@ -1248,6 +1284,28 @@ pub trait HostApi {
 
     // ── Undo / dirty ────────────────────────────────────────────────────────
     fn push_undo(&mut self, label: &str);
+    /// Open one undo step that spans several messages (API v14): every edit
+    /// until [`HostApi::end_undo_group`] joins it, including writes a worker
+    /// thread sends through [`HostApi::plugin_request_sender`], and
+    /// `push_undo` inside it opens nothing new. The step also closes when the
+    /// user runs a command of their own. The default is [`HostApi::push_undo`].
+    fn begin_undo_group(&mut self, label: &str) {
+        self.push_undo(label);
+    }
+    /// Close the step [`HostApi::begin_undo_group`] opened.
+    fn end_undo_group(&mut self) {}
+
+    /// The entities matching `query`, one page at a time (API v14). `query`
+    /// is the JSON of the control API's `query` operation, e.g.
+    /// `{"layer":"*-OPENBARE_RUIMTE_*","type":"Mesh","xdata_app":"OPENINFRA",
+    /// "bounds":[x0,y0,x1,y1],"offset":0,"limit":500}`: `layer` takes `*` and
+    /// `?`, `where` filters properties by JSON Pointer, and `limit` is at
+    /// most 10000. One message carries at most 64 MiB either way, so batch
+    /// writes and size pages to stay under it.
+    fn query_entities(&mut self, query: &str) -> Result<EntityPage, String> {
+        let _ = query;
+        Err("query_entities is not supported by this host".to_owned())
+    }
     fn set_dirty(&mut self);
 
     // ── Command line ────────────────────────────────────────────────────────
@@ -1350,6 +1408,12 @@ pub trait HostApi {
 
     /// Read a named host setting without invoking the command dispatcher.
     /// Names are case-insensitive. Hosts may support only a subset.
+    ///
+    /// The desktop host reads `CLAYER`, `CTAB`, `CTEXTSTYLE`, `CELTYPE` and
+    /// `SNAPANG`, and the drawing's numeric and point variables (`INSUNITS`,
+    /// `MEASUREMENT`, `LUNITS`, `LUPREC`, `LTSCALE`, `PDMODE`, `PDSIZE`,
+    /// `EXTMIN`, `EXTMAX`, `LIMMIN`, `LIMMAX`, `INSBASE`, ...). A point comes
+    /// back as text, `"x,y,z"`.
     fn system_variable(&self, _name: &str) -> Option<HostSettingValue> {
         None
     }

@@ -3579,9 +3579,17 @@ impl OpenCADStudio {
                 };
                 // A text taking a style takes what the style fixes: its height
                 // when the style sets one, its width factor and oblique angle.
+                // An annotative style's height is on paper: the text takes it
+                // at the current annotation scale.
                 let text_style = (field == "style")
                     .then(|| self.tabs[i].scene.document.text_styles.get(&value).cloned())
-                    .flatten();
+                    .flatten()
+                    .map(|mut style| {
+                        if style.annotative {
+                            style.height *= self.tabs[i].scene.creation_annotation_multiplier();
+                        }
+                        style
+                    });
                 // A dimension taking a style takes its annotative state, as a
                 // new dimension would. (#1917)
                 let dim_style_annotative = (field == "style_name")

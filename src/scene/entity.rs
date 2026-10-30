@@ -1014,6 +1014,7 @@ impl Scene {
                 .map(|e| e.common().handle)
                 .collect();
             for h in owned {
+                self.remove_image_definition_reactor(h);
                 self.document.remove_entity(h);
             }
             // Update existing BlockRecord fields
@@ -1274,7 +1275,7 @@ impl Scene {
     /// drop point. The geometry comes from the clipboard rather than live
     /// entities, so there is nothing to stage or erase. (#129)
     /// Register a new image's shared definition and exclusively owned reactor.
-    pub(super) fn ensure_image_definition(&mut self, entity: &mut EntityType) {
+    pub(crate) fn ensure_image_definition(&mut self, entity: &mut EntityType) {
         let EntityType::RasterImage(img) = entity else {
             return;
         };
@@ -1405,6 +1406,34 @@ impl Scene {
         }
         img.definition_handle = Some(def_handle);
         img.definition_reactor_handle = Some(reactor_handle);
+    }
+
+    /// Remove an erased image's owned reactor, retaining its shared definition.
+    pub(super) fn remove_image_definition_reactor(&mut self, handle: Handle) {
+        let Some(EntityType::RasterImage(img)) = self.document.get_entity(handle) else {
+            return;
+        };
+        let Some(reactor) = img.definition_reactor_handle else {
+            return;
+        };
+        if !matches!(self.document.objects.get(&reactor),
+            Some(ObjectType::ImageDefinitionReactor(r)) if r.owner == handle)
+        {
+            return;
+        }
+        let definition = img.definition_handle;
+        if self.is_recording_undo() {
+            for h in [Some(reactor), definition].into_iter().flatten() {
+                let before = self.document.objects.get(&h).cloned();
+                self.record_undo_object_before(h, before);
+            }
+        }
+        self.document.objects.remove(&reactor);
+        if let Some(ObjectType::ImageDefinition(def)) =
+            definition.and_then(|h| self.document.objects.get_mut(&h))
+        {
+            def.reactors.retain(|h| *h != reactor);
+        }
     }
 
     pub fn define_block_from_owned_entities(
@@ -1576,6 +1605,7 @@ impl Scene {
             .map(|e| e.common().handle)
             .collect();
         for h in &owned {
+            self.remove_image_definition_reactor(*h);
             self.document.remove_entity(*h);
         }
         if let Some(EntityType::Block(block)) = self.document.get_entity_mut(block_handle) {
@@ -2524,6 +2554,13 @@ impl Scene {
             // never drawn or filled. Treating one as a fill boundary paints its
             // rectangle solid and creates a phantom bar.
             if path.flags.bits() & 8 != 0 {
+                continue;
+            }
+            // Skip loops flagged not closed (flag bit 5). AutoCAD leaves such a
+            // loop out of the hatch even when its edges meet: it neither fills
+            // it nor cuts it as an island. Filling it painted areas AutoCAD
+            // never shows.
+            if path.flags.is_not_closed() {
                 continue;
             }
             let mut edge_polys: Vec<Vec<[f64; 2]>> = Vec::new();
@@ -3668,5 +3705,126 @@ mod image_definition_graph_tests {
         };
         assert!(def.reactors.contains(&source_reactor));
         assert!(!def.reactors.contains(&copy_reactor));
+    }
+
+    #[test]
+    fn erase_image_copy_removes_only_its_owned_reactor() {
+        let mut scene = Scene::new();
+        let source = scene.add_entity(image("shared.png"));
+        let copy = scene.copy_entities(
+            &[source],
+            &crate::command::EntityTransform::Translate(glam::DVec3::new(20.0, 0.0, 0.0)),
+        )[0];
+        let definition = raster(&scene, source).definition_handle.unwrap();
+        let source_reactor = assert_reactor(&scene, source, definition);
+        let copy_reactor = assert_reactor(&scene, copy, definition);
+
+        scene.erase_entities(&[copy]);
+
+        assert!(scene.document.get_entity(copy).is_none());
+        assert!(!scene.document.objects.contains_key(&copy_reactor));
+        assert_eq!(assert_reactor(&scene, source, definition), source_reactor);
+        let Some(ObjectType::ImageDefinition(def)) = scene.document.objects.get(&definition) else {
+            panic!("missing image definition");
+        };
+        assert!(!def.reactors.contains(&copy_reactor));
+        assert!(def.reactors.contains(&def.owner));
+
+        // Removing the final image keeps the definition and dictionary entry.
+        let dictionary = def.owner;
+        let source_image = scene.document.get_entity_arc(source).unwrap();
+        scene.erase_entities(&[source]);
+        assert!(!scene.document.objects.contains_key(&source_reactor));
+        let Some(ObjectType::ImageDefinition(def)) = scene.document.objects.get(&definition) else {
+            panic!("missing retained image definition");
+        };
+        assert_eq!(def.reactors, vec![dictionary]);
+        let Some(ObjectType::Dictionary(entries)) = scene.document.objects.get(&dictionary) else {
+            panic!("missing retained image dictionary");
+        };
+        assert_eq!(entries.get("shared"), Some(definition));
+
+        assert_eq!(
+            scene.restore_erased_entities(vec![source_image]),
+            vec![source]
+        );
+        let restored_reactor = assert_reactor(&scene, source, definition);
+        assert_ne!(restored_reactor, source_reactor);
+    }
+
+    #[test]
+    fn erase_image_copy_undo_restores_reactor_exactly_once() {
+        let mut scene = Scene::new();
+        let source = scene.add_entity(image("shared.png"));
+        let copy = scene.copy_entities(
+            &[source],
+            &crate::command::EntityTransform::Translate(glam::DVec3::new(20.0, 0.0, 0.0)),
+        )[0];
+        let definition = raster(&scene, source).definition_handle.unwrap();
+        let source_reactor = assert_reactor(&scene, source, definition);
+        let copy_reactor = assert_reactor(&scene, copy, definition);
+        scene.begin_undo_recording();
+        scene.erase_entities(&[copy]);
+        let recording = scene.take_undo_recording().expect("erase undo recording");
+        assert!(!recording.is_poisoned());
+        let (entities, objects, _, _, _) = recording.into_recorded_images();
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].0, copy);
+        assert_eq!(
+            objects.len(),
+            2,
+            "definition and owned reactor before-images"
+        );
+        assert!(objects.iter().any(|(h, before)| *h == copy_reactor
+            && matches!(
+                before, Some(ObjectType::ImageDefinitionReactor(r)) if r.owner == copy
+            )));
+        assert!(objects.iter().any(|(h, before)| *h == definition && matches!(
+            before, Some(ObjectType::ImageDefinition(def)) if def.reactors.contains(&copy_reactor)
+        )));
+        let entities: Vec<_> = entities
+            .into_iter()
+            .map(|(h, before)| (h, before, scene.document.get_entity_arc(h)))
+            .collect();
+        let objects: Vec<_> = objects
+            .into_iter()
+            .map(|(h, before)| (h, before, scene.document.objects.get(&h).cloned()))
+            .collect();
+
+        for undo in [true, false, true] {
+            // Match history replay: object images first, then entity images.
+            for (h, before, after) in &objects {
+                if let Some(object) = if undo { before } else { after } {
+                    scene.document.objects.insert(*h, object.clone());
+                } else {
+                    scene.document.objects.remove(h);
+                }
+            }
+            scene.apply_entity_delta(&entities, undo);
+            assert_eq!(assert_reactor(&scene, source, definition), source_reactor);
+            if undo {
+                assert_eq!(assert_reactor(&scene, copy, definition), copy_reactor);
+                let mut restored = scene.document.get_entity(copy).unwrap().clone();
+                let object_count = scene.document.objects.len();
+                scene.ensure_image_definition(&mut restored);
+                scene.ensure_image_definition(&mut restored);
+                assert_eq!(scene.document.objects.len(), object_count);
+                let EntityType::RasterImage(restored) = restored else {
+                    panic!("expected restored image");
+                };
+                assert_eq!(restored.definition_reactor_handle, Some(copy_reactor));
+            } else {
+                assert!(scene.document.get_entity(copy).is_none());
+                assert!(!scene.document.objects.contains_key(&copy_reactor));
+            }
+            let Some(ObjectType::ImageDefinition(def)) = scene.document.objects.get(&definition)
+            else {
+                panic!("missing image definition");
+            };
+            assert_eq!(
+                def.reactors.iter().filter(|h| **h == copy_reactor).count(),
+                usize::from(undo)
+            );
+        }
     }
 }

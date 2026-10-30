@@ -262,6 +262,7 @@ impl OpenCADStudio {
             Some(AttMan) => self.attman = None,
             Some(BlockEditPicker) => self.block_edit_picker = None,
             Some(Rename) => self.rename_dialog = None,
+            Some(Purge) => self.purge_dialog = None,
             Some(SelectSimilarSettings) => self.select_similar_settings = None,
             Some(BlockSaveAs) => self.block_save_as = None,
             Some(BlockVisibility) => self.block_visibility = None,
@@ -698,6 +699,13 @@ impl OpenCADStudio {
                         }
                     }
                 }
+            }
+            // Enter in the unsaved-block question saves and closes.
+            if self.active_modal == Some(super::ModalKind::BlockEditChanges)
+                && (matches!(msg, Message::CommandFinalize)
+                    || matches!(&msg, Message::ShortcutPressed(key) if key.rsplit('+').next() == Some("ENTER") || key.rsplit('+').next() == Some("RETURN")))
+            {
+                return self.update(Message::BlockEditChangesSave);
             }
             if self.active_modal == Some(super::ModalKind::BlockEditPicker)
                 && (matches!(msg, Message::CommandFinalize)
@@ -1775,7 +1783,10 @@ impl OpenCADStudio {
                 if self.opening.as_ref().map(|opening| opening.id) != Some(open_id) {
                     return Task::none();
                 }
-                if e.recovery_available {
+                // An automation open has nobody to answer the recovery
+                // prompt, so it fails like any other unreadable drawing
+                // instead of holding the request open behind the modal.
+                if e.recovery_available && !crate::app::control::controlled_open_pending(self) {
                     if let Some(opening) = self.opening.as_mut() {
                         opening.recovery_error = Some(e.message);
                         opening.recovery_read_stats = e.read_stats;
@@ -11613,7 +11624,9 @@ impl OpenCADStudio {
             Message::PluginInstalled(Ok(id)) => {
                 self.marketplace_status =
                     crate::tf!("Installed '{id}'. Restart to load it.").into_owned();
-                self.plugin_load_errors.remove(&id);
+                for id in id.split(", ") {
+                    self.plugin_load_errors.remove(id);
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     self.external_plugins = crate::plugin::external::discover();
@@ -11680,7 +11693,10 @@ impl OpenCADStudio {
             Message::EnterViewport(handle) => {
                 let i = self.active_tab;
                 let context_changed = self.tabs[i].scene.active_viewport != Some(handle);
-                let cancel_task = if context_changed {
+                // Ctrl+R and CHSPACE's target choice move within the command.
+                let keep_command = std::mem::take(&mut self.viewport_switch_keeps_command)
+                    || self.chspace_pending.is_some();
+                let cancel_task = if context_changed && !keep_command {
                     self.cancel_active_command_for_space_change()
                 } else {
                     Task::none()
@@ -11691,7 +11707,9 @@ impl OpenCADStudio {
                     self.tabs[i].scene.clear_preview_wire();
                 }
                 // Clear paper-space selection before entering model space.
-                self.tabs[i].scene.deselect_all();
+                if !keep_command {
+                    self.tabs[i].scene.deselect_all();
+                }
                 self.tabs[i].scene.active_viewport = Some(handle);
                 // Fold a stale UTM saved view onto the effective (auto-fit)
                 // centre so pan/zoom, paper↔model and the display all agree —
@@ -11902,6 +11920,7 @@ impl OpenCADStudio {
             }
             Message::BlockEditPickerApply => self.apply_bedit_dialog(),
             Message::Rename(msg) => self.on_rename_dialog(msg),
+            Message::Purge(msg) => self.on_purge_dialog(msg),
             Message::SelectSimilarSettingsToggle(bit) => {
                 if let Some(mode) = self.select_similar_settings.as_mut() {
                     *mode ^= bit;
@@ -12179,6 +12198,17 @@ impl OpenCADStudio {
                         crate::io::pdf_export::pick_plot_path_owned(stem),
                         Message::PrintAllPdfPath,
                     )
+                }
+            }
+            Message::PrintAllPdfTo(path) => {
+                // DXEVAL: publishing compares extraction tables as it starts.
+                match self.evaluate_extraction_tables(
+                    self.active_tab,
+                    crate::app::commands::extraction_eval::EVENT_PUBLISH,
+                    Some(Message::PrintAllPdfTo(path.clone())),
+                ) {
+                    Some(task) => task,
+                    None => self.on_print_all_pdf_path_some(path),
                 }
             }
             Message::PrintAllPdfPath(None) => Task::none(),

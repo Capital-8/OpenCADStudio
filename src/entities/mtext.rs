@@ -252,7 +252,7 @@ fn to_render(t: &MText, document: &codec::Document) -> RenderEntity {
 
 /// EXPLODE: one single-line TEXT per laid-out run, at the run's own baseline
 /// origin, height, rotation and width, so the result sits where the MTEXT was
-/// drawn. Inline colours carry over as true colours. (#760)
+/// drawn. Inline colours carry over, index colours as indices. (#760)
 // ponytail: one TEXT per run (word), not merged per line; merge same-format runs if users ask.
 pub(crate) fn explode_mtext(t: &MText, document: &codec::Document) -> Vec<codec::EntityType> {
     let RenderObject::Text(strokes) = to_render(t, document).object else {
@@ -271,7 +271,9 @@ pub(crate) fn explode_mtext(t: &MText, document: &codec::Document) -> Vec<codec:
             );
             text.common = t.common.clone();
             text.common.handle = codec::Handle::NULL;
-            if let Some([r, g, b]) = stroke.color {
+            if let Some(index) = run.aci {
+                text.common.color = codec::types::Color::Index(index);
+            } else if let Some([r, g, b]) = stroke.color {
                 let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
                 text.common.color = codec::types::Color::Rgb {
                     r: byte(r),
@@ -849,3 +851,4 @@ impl crate::entities::traits::TextContent for codec::entities::MText {
         }
     }
 }
+

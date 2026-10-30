@@ -1580,6 +1580,9 @@ impl OpenCADStudio {
         self.shortcut_bindings
             .entry("SHIFT+TAB".to_string())
             .or_insert_with(|| "DYNTABPREV".to_string());
+        self.shortcut_bindings
+            .entry(if cfg!(target_os = "macos") { "CMD+R" } else { "CTRL+R" }.to_string())
+            .or_insert_with(|| "NEXTVIEWPORT".to_string());
         for (key, action) in crate::app::shortcuts::PLATFORM_BINDINGS {
             self.shortcut_bindings
                 .entry(key.to_string())

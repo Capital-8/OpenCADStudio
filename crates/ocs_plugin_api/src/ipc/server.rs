@@ -81,6 +81,15 @@ pub fn handle_plugin_request(
             host.push_undo(&label);
             PluginResponse::Ok
         }
+        BeginUndoGroup { label } => {
+            host.begin_undo_group(&label);
+            PluginResponse::Ok
+        }
+        EndUndoGroup => {
+            host.end_undo_group();
+            PluginResponse::Ok
+        }
+        QueryEntities { query } => PluginResponse::EntityPage(host.query_entities(&query)),
         SetDirty => {
             host.set_dirty();
             PluginResponse::Ok

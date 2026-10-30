@@ -5441,6 +5441,7 @@ impl OpenCADStudio {
                         edit.grab = grabbed.map(|point| point - world);
                     }
                     self.tabs[i].active_grip = Some(edit);
+                    self.grip_engage_press = Some(p);
                     self.grip_hover = None;
                     self.grip_popup = None;
                     self.tabs[i]
@@ -5764,9 +5765,15 @@ impl OpenCADStudio {
                 }
                 return Task::none();
             }
+            // The press that picked the grip up, released within the drag
+            // threshold, was a click however the hand trembled: stay hot
+            // and wait for the placement click.
+            let engaging_click = self.grip_engage_press.take().is_some_and(|press| {
+                let (dx, dy) = (p.x - press.x, p.y - press.y);
+                dx * dx + dy * dy <= 12.0 * 12.0
+            });
             let moved = grip.last_world != grip.origin_world;
-            if is_click && !moved {
-                // Engaging click — stay hot, wait for the placement click.
+            if engaging_click || (is_click && !moved) {
                 return Task::none();
             }
             return self.commit_active_grip_edit();
@@ -8931,22 +8938,6 @@ properties={:.1}ms picked={}",
         let history_originals = std::mem::take(&mut self.grip_history_originals);
         let dirty_before = self.grip_dirty_before.take().unwrap_or(self.tabs[i].dirty);
         if !handles.is_empty() {
-            if !originals.is_empty() {
-                self.push_entity_group_history(
-                    i,
-                    "GRIP",
-                    originals
-                        .into_iter()
-                        .map(|(handle, entity)| (handle, std::sync::Arc::new(entity)))
-                        .collect(),
-                    history_originals
-                        .into_iter()
-                        .flat_map(|(_, objects)| objects)
-                        .collect(),
-                    dirty_before,
-                );
-                self.tabs[i].dirty = true;
-            }
             self.grip_reference_wires.clear();
             self.grip_text_verts = Vec::new();
             self.grip_text_slide = false;
@@ -8958,9 +8949,43 @@ properties={:.1}ms picked={}",
                 .into_iter()
                 .map(|handle| (handle, crate::scene::ChangeKind::Modified))
                 .collect();
+            // Dimensions that follow the edited shapes update here; record
+            // them so the one undo also brings back their saved pictures.
+            self.tabs[i].scene.begin_undo_recording();
             self.tabs[i]
                 .scene
                 .bump_entities_after_parametric_solve(&changes);
+            let (followers, follower_objects, ..) = self.tabs[i]
+                .scene
+                .take_undo_recording()
+                .map(|recording| recording.into_recorded_images())
+                .unwrap_or_default();
+            if !originals.is_empty() {
+                let mut before: Vec<_> = originals
+                    .into_iter()
+                    .map(|(handle, entity)| (handle, std::sync::Arc::new(entity)))
+                    .collect();
+                for (handle, entity) in followers {
+                    if let Some(entity) = entity {
+                        if !before.iter().any(|(known, _)| *known == handle) {
+                            before.push((handle, entity));
+                        }
+                    }
+                }
+                let mut object_before: Vec<_> = history_originals
+                    .into_iter()
+                    .flat_map(|(_, objects)| objects)
+                    .collect();
+                for (handle, object) in follower_objects {
+                    if let Some(object) = object {
+                        if !object_before.iter().any(|(known, _)| *known == handle) {
+                            object_before.push((handle, object));
+                        }
+                    }
+                }
+                self.push_entity_group_history(i, "GRIP", before, object_before, dirty_before);
+                self.tabs[i].dirty = true;
+            }
         }
         // Placement confirmed — keep the just-added leader.
         self.grip_add_provisional = None;

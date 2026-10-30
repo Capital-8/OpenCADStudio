@@ -80,6 +80,9 @@ pub struct GlyphRun {
     pub tracking: f32,
     /// Bold run — the SDF glyph bakes with a wider pen (thicker strokes).
     pub bold: bool,
+    /// The run's inline colour when given as an index (`\C`), which the
+    /// stroke colour alone cannot tell from a true colour.
+    pub aci: Option<u8>,
 }
 
 #[allow(dead_code)]

@@ -55,6 +55,7 @@ pub(super) fn default_bindings() -> BTreeMap<String, String> {
         (format!("{ACCEL}+O"), "OPEN"),
         (format!("{ACCEL}+P"), "PLOT"),
         (format!("{ACCEL}+W"), "TOGGLESELECTIONCYCLING"),
+        (format!("{ACCEL}+R"), "NEXTVIEWPORT"),
         (format!("{ACCEL}+Q"), "QUIT"),
         (format!("{ACCEL}+S"), "SAVE"),
         (format!("{ACCEL}+SHIFT+S"), "SAVEAS"),
@@ -199,6 +200,7 @@ pub(super) const INPUT_ACTIONS: &[&str] = &[
     "OTRACK",
     "DYNINPUT",
     "TOGGLESELECTIONCYCLING",
+    "NEXTVIEWPORT",
     "SELECTALL",
     "PASTECLIP",
 ];
@@ -301,6 +303,26 @@ impl OpenCADStudio {
         self.persist_settings_if_changed();
     }
 
+    /// Ctrl+R: make the next viewport of the layout current, from paper
+    /// space the first one, keeping a running command going.
+    fn next_viewport(&mut self) -> Task<Message> {
+        let scene = &self.tabs[self.active_tab].scene;
+        if scene.current_layout == "Model" {
+            return Task::none();
+        }
+        let viewports: Vec<codec::Handle> =
+            scene.viewport_list().into_iter().map(|vp| vp.handle).collect();
+        let next = match scene.active_viewport.and_then(|h| viewports.iter().position(|v| *v == h)) {
+            Some(index) => viewports.get((index + 1) % viewports.len()),
+            None => viewports.first(),
+        };
+        let Some(&next) = next else {
+            return Task::none();
+        };
+        self.viewport_switch_keeps_command = true;
+        Task::done(Message::EnterViewport(next))
+    }
+
     pub(super) fn run_shortcut(&mut self, key: &str) -> Task<Message> {
         let action = self.shortcut_bindings.get(key).or_else(|| {
             let base = key.rsplit('+').next()?;
@@ -359,6 +381,7 @@ impl OpenCADStudio {
             "OTRACK" => Message::ToggleOTrack,
             "DYNINPUT" => Message::ToggleDynInput,
             "TOGGLESELECTIONCYCLING" => Message::ToggleSelectionCycling,
+            "NEXTVIEWPORT" => return self.next_viewport(),
             "SELECTALL" => Message::SelectAllShortcut,
             "PASTECLIP" => Message::PasteShortcut,
 

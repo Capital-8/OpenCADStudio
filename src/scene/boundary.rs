@@ -1449,10 +1449,6 @@ pub(crate) fn hatch_path_ring(path: &codec::entities::BoundaryPath) -> Option<Ve
     (ring.len() >= 3).then_some(ring)
 }
 
-pub(crate) fn hatch_path_directions(path: &codec::entities::BoundaryPath) -> Vec<f64> {
-    hatch_path_geometry(path).1
-}
-
 pub(crate) fn hatch_boundary_rings(hatch: &codec::entities::Hatch) -> Vec<Vec<[f64; 2]>> {
     hatch.paths.iter().filter_map(hatch_path_ring).collect()
 }

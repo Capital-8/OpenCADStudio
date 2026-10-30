@@ -1079,7 +1079,7 @@ impl OpenCADStudio {
 
             "EXPLODE" => {
                 use crate::modules::draw::modify::explode::{
-                    apply_explode_replacements, plan_explode,
+                    apply_explode_replacements, plan_explode_in_context,
                 };
                 let selected: Vec<_> = self.tabs[i]
                     .scene
@@ -1119,7 +1119,11 @@ impl OpenCADStudio {
                         } else {
                             selected
                         };
-                    let replacements = plan_explode(&selected, &self.tabs[i].scene.document);
+                    let replacements = plan_explode_in_context(
+                        &selected,
+                        &self.tabs[i].scene.document,
+                        self.tabs[i].scene.displayed_annotation_scale_handle(),
+                    );
                     let exploded = replacements.len();
                     if exploded > 0 {
                         self.push_undo_snapshot(i, "EXPLODE");

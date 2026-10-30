@@ -307,6 +307,30 @@ impl HostApi for PluginHostApi {
         }
     }
 
+    fn begin_undo_group(&mut self, label: &str) {
+        if let Err(e) = self.client.request(PluginRequest::BeginUndoGroup {
+            label: label.to_string(),
+        }) {
+            eprintln!("[plugin] begin_undo_group failed: {e}");
+        }
+    }
+
+    fn end_undo_group(&mut self) {
+        if let Err(e) = self.client.request(PluginRequest::EndUndoGroup) {
+            eprintln!("[plugin] end_undo_group failed: {e}");
+        }
+    }
+
+    fn query_entities(&mut self, query: &str) -> Result<crate::host::EntityPage, String> {
+        match self.client.request(PluginRequest::QueryEntities {
+            query: query.to_string(),
+        }) {
+            Ok(PluginResponse::EntityPage(page)) => page,
+            Ok(other) => Err(format!("unexpected QueryEntities response: {other:?}")),
+            Err(e) => Err(format!("QueryEntities failed: {e}")),
+        }
+    }
+
     fn set_dirty(&mut self) {
         if let Err(e) = self.client.request(PluginRequest::SetDirty) {
             eprintln!("[plugin] set_dirty failed: {e}");

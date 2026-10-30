@@ -2974,6 +2974,7 @@ mod aabb_reject_tests {
             uv: [0.0; 2],
             color: [1.0; 4],
             draw_depth: 0.0,
+            pen: 0.0,
         };
         let mut block = wire(
             "479",
