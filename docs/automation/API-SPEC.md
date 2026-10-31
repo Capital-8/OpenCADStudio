@@ -183,6 +183,7 @@ client needs to act:
 | `hand_seed` | The drawing's handle seed, hex — a monotonically advancing per-file object counter |
 | `documents[]` | Every open document: `id`, `title`, `path`, `dirty`, `revision` |
 | `selection[]` | Handles currently selected, in pick order |
+| `block_editor` | The definition open in the block editor, `{name, handle}`, or `null` — while set, created geometry joins that definition |
 | `command` | An interactive command's state, when one is running: `accepts[]`, `options[]`, `input_example` |
 | `operation` | The `request_id` of the operation currently pending, when one is |
 | `capabilities` | Feature list (also available as the dedicated `capabilities` read) |
@@ -228,7 +229,7 @@ and stable; branch on it, not on message text.
 | `name_required`, `entities_required`, `selection_required`, `app_required`, `path_required`, `handles_required`, `block_required` | Missing mandatory field | no |
 | `unknown_entity_type`, `invalid_radius`, `invalid_vertices`, `invalid_point`, `invalid_text`, `invalid_scale`, `invalid_paper`, `invalid_handle`, `invalid_xdata`, `invalid_sysvar_value` | Validation failures — nothing commits | no |
 | `unknown_sysvar` | Variable outside the registry (§6.7) | no |
-| `layout_exists`, `layout_missing`, `layer_failed`, `block_failed`, `block_missing`, `block_protected`, `selection_set_missing`, `template_missing`, `template_failed`, `save_failed` | Domain refusals, self-explanatory | no |
+| `layout_exists`, `layout_missing`, `layer_failed`, `block_failed`, `block_missing`, `block_protected`, `block_cycle`, `selection_set_missing`, `template_missing`, `template_failed`, `save_failed` | Domain refusals, self-explanatory | no |
 
 Unknown routes answer `code:"unknown_route"` (HTTP 404). A timed-out parked
 request answers `code:"response_timeout"`.
@@ -277,6 +278,11 @@ and `color` (index); any other field is refused (`unknown_entity_field`).
 | `Insert` | `block` (must exist), `position`, optional `scale` (number or `[x,y,z]`, nonzero), `rotation_deg` |
 | `Solid` | `corners` (3 or 4 `[x,y,z]`) |
 | `Hatch` | `boundary` (≥ 3 points, closed), `solid`, or `pattern` (catalog name, default `ANSI31`), `pattern_scale`, `pattern_angle_deg` |
+
+While `state.block_editor` names a definition, the whole batch is authored
+inside it, on the editor's own undo stack, exactly like `run`; an `Insert`
+that would nest the open definition inside itself is refused
+(`block_cycle`) before anything commits.
 
 Result: `{"handles":[…],"created":N,"layers_created":[…]}` → HTTP 201.
 

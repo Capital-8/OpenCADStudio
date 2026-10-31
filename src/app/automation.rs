@@ -982,7 +982,8 @@ impl OpenCADStudio {
             "select" => {
                 let i = self.active_tab;
                 // By explicit handles (hex, as returned by `query`). An entity
-                // inside a block definition is not selectable on its own.
+                // inside a block definition is not selectable on its own,
+                // except in the definition the editor has open.
                 let explicit: Vec<codec::Handle> = req["handles"]
                     .as_array()
                     .map(|arr| {
@@ -998,10 +999,26 @@ impl OpenCADStudio {
                             .collect()
                     })
                     .unwrap_or_default();
-                let inside = definition_members(&self.tabs[i].scene.document);
+                let scene = &self.tabs[i].scene;
+                let inside = definition_members(&scene.document);
+                // The definition open in the editor is the space being
+                // authored: its children are selectable there, like a pick in
+                // the viewport. Membership is the record's own list, so a
+                // child whose stored owner is null is still recognised, and
+                // every other definition's children stay out of reach.
+                let editing: std::collections::HashSet<codec::Handle> =
+                    scene.block_edit_block.map_or_else(Default::default, |definition| {
+                        scene
+                            .document
+                            .block_records
+                            .iter()
+                            .find(|record| record.handle == definition)
+                            .map(|record| record.entity_handles.iter().copied().collect())
+                            .unwrap_or_default()
+                    });
                 let refused: Vec<String> = explicit
                     .iter()
-                    .filter(|h| inside.contains(h))
+                    .filter(|h| inside.contains(h) && !editing.contains(h))
                     .map(|h| format!("{:X}", h.value()))
                     .collect();
                 if !refused.is_empty() {
