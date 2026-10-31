@@ -680,7 +680,8 @@ mod tests {
                 "kind": "Vertical",
                 "participants": [child_hex],
                 "enabled": true,
-                "conflict": null
+                "conflict": null,
+                "form": null
             }]),
             "{visible}"
         );

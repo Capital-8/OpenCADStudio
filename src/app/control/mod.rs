@@ -3458,6 +3458,148 @@ mod tests {
         );
     }
 
+    /// `DCFORM` converts the selected dimensional constraint and the record
+    /// reads back the form it now uses; a selection without one is refused
+    /// rather than reported as a change.
+    #[test]
+    fn dcform_converts_the_selected_dimensional_constraint() {
+        use crate::command::CmdResult;
+        use crate::scene::parametric_constraints::{
+            ConstraintKind, ParametricRef, ParametricScope,
+        };
+
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 40,0"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,10 10,10"}));
+        let lines: Vec<String> = request(&mut app, json!({"op":"query","type":"Line"}))["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .collect();
+        let line = codec::Handle::new(u64::from_str_radix(&lines[0], 16).unwrap());
+        let task = app.apply_cmd_result(CmdResult::AddDimensionalConstraint {
+            kind: ConstraintKind::DistanceX,
+            first: ParametricRef::point(line, 0),
+            second: ParametricRef::point(line, 1),
+            first_point: glam::DVec3::ZERO,
+            second_point: glam::DVec3::new(40.0, 0.0, 0.0),
+            location: glam::DVec3::new(20.0, -10.0, 0.0),
+            axis: glam::DVec3::X,
+            direction: None,
+            name: "d1".to_string(),
+            expression: "40".to_string(),
+            renamed: false,
+            label: "Linear constraint",
+        });
+        app.drive_headless_task(task).unwrap();
+        let dimension = *app.tabs[app.active_tab]
+            .scene
+            .parametric_constraint_set(ParametricScope::ModelSpace)
+            .and_then(|set| set.dimensions.values().next())
+            .expect("the dimensional constraint created its dimension");
+        assert!(
+            !app.tabs[app.active_tab].scene.dimension_is_annotational(dimension),
+            "a new dimensional constraint starts in the dynamic form"
+        );
+
+        let record = |app: &mut OpenCADStudio| {
+            request(app, json!({"op":"select","handles":[&lines[0]]}));
+            let read = request(app, json!({"op":"get_selection"}));
+            read["result"]["entities"][0]["constraints"].clone()
+        };
+        let dynamic = record(&mut app);
+        assert_eq!(dynamic[0]["kind"], "Horizontal distance", "{dynamic}");
+        assert_eq!(
+            dynamic[0]["form"], "Dynamic",
+            "the record names the form the dimension uses: {dynamic}"
+        );
+
+        let started = request(
+            &mut app,
+            json!({"op":"select","handles":[format!("{:X}", dimension.value())]}),
+        );
+        assert_eq!(started["ok"], true, "{started}");
+        let started = request(&mut app, json!({"op":"run","cmd":"DCFORM"}));
+        assert_eq!(started["status"], "waiting_input", "{started}");
+        let converted = request(
+            &mut app,
+            json!({"op":"input","kind":"token","text":"Annotational"}),
+        );
+        assert_eq!(converted["ok"], true, "{converted}");
+        assert!(
+            app.tabs[app.active_tab].active_cmd.is_none(),
+            "converting the selection finishes the command"
+        );
+        assert!(
+            app.tabs[app.active_tab].scene.dimension_is_annotational(dimension),
+            "the selected constraint now uses the annotational form: {converted}"
+        );
+        // The conversion is one undo step; redo re-applies it.
+        let undone = request(&mut app, json!({"op":"run","cmd":"UNDO"}));
+        assert_eq!(undone["ok"], true, "{undone}");
+        assert!(
+            !app.tabs[app.active_tab].scene.dimension_is_annotational(dimension),
+            "UNDO restores the dynamic form: {undone}"
+        );
+        let redone = request(&mut app, json!({"op":"run","cmd":"REDO"}));
+        assert_eq!(redone["ok"], true, "{redone}");
+        assert!(
+            app.tabs[app.active_tab].scene.dimension_is_annotational(dimension),
+            "REDO re-applies the annotational form: {redone}"
+        );
+        let annotational = record(&mut app);
+        assert_eq!(annotational[0]["form"], "Annotational", "{annotational}");
+
+        // Answering the same form again changes nothing and adds no history
+        // step, so the UNDO that follows still reverts the real conversion.
+        request(
+            &mut app,
+            json!({"op":"select","handles":[format!("{:X}", dimension.value())]}),
+        );
+        request(&mut app, json!({"op":"run","cmd":"DCFORM"}));
+        let same = request(
+            &mut app,
+            json!({"op":"input","kind":"token","text":"Annotational"}),
+        );
+        assert_eq!(same["ok"], true, "{same}");
+        let undone = request(&mut app, json!({"op":"run","cmd":"UNDO"}));
+        assert!(
+            !app.tabs[app.active_tab].scene.dimension_is_annotational(dimension),
+            "a repeated answer leaves no phantom undo step: {undone}"
+        );
+        request(&mut app, json!({"op":"run","cmd":"REDO"}));
+        assert!(app.tabs[app.active_tab].scene.dimension_is_annotational(dimension));
+
+        // And back, so the conversion works both ways.
+        request(
+            &mut app,
+            json!({"op":"select","handles":[format!("{:X}", dimension.value())]}),
+        );
+        request(&mut app, json!({"op":"run","cmd":"DCFORM"}));
+        let converted = request(&mut app, json!({"op":"input","kind":"token","text":"Dynamic"}));
+        assert_eq!(converted["ok"], true, "{converted}");
+        assert!(
+            !app.tabs[app.active_tab].scene.dimension_is_annotational(dimension),
+            "the selected constraint is dynamic again: {converted}"
+        );
+
+        // A selection that carries no dimensional constraint is refused.
+        request(&mut app, json!({"op":"select","handles":[&lines[1]]}));
+        let started = request(&mut app, json!({"op":"run","cmd":"DCFORM"}));
+        assert_eq!(started["status"], "waiting_input", "{started}");
+        let refused = request(
+            &mut app,
+            json!({"op":"input","kind":"token","text":"Annotational"}),
+        );
+        assert_eq!(
+            refused["ok"], false,
+            "DCFORM must refuse a selection with no dimensional constraint: {refused}"
+        );
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+    }
+
     #[test]
     fn command_discovery_explains_batch_and_interactive_use() {
         let mut app = OpenCADStudio::new_for_test();
@@ -4176,7 +4318,7 @@ mod tests {
         let done = user_select_result(&mut app, "us-c");
         assert_eq!(
             done["result"]["entities"][0]["constraints"],
-            json!([{"kind":"Fixed","participants":[handle],"enabled":true,"conflict":null}]),
+            json!([{"kind":"Fixed","participants":[handle],"enabled":true,"conflict":null,"form":null}]),
             "{done}"
         );
 
@@ -4511,7 +4653,7 @@ mod tests {
         let read = request(&mut app, json!({"op":"get_selection"}));
         assert_eq!(
             read["result"]["entities"][0]["constraints"],
-            json!([{"kind": "Fixed", "participants": [circle_handle], "enabled": true, "conflict": null}]),
+            json!([{"kind": "Fixed", "participants": [circle_handle], "enabled": true, "conflict": null, "form": null}]),
             "{read}"
         );
     }

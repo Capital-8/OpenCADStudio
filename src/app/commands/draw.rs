@@ -1727,16 +1727,91 @@ impl OpenCADStudio {
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
             }
 
-            // DCFORM's answer, then on into DIMCONSTRAINT's options as the
-            // reference does.
+            // DCFORM's answer: convert the selected dimensional constraints,
+            // or, with nothing selected, set the form new ones will use.
             cmd if cmd.starts_with("DCFORM_SET ") => {
                 use crate::modules::parametric::DimConstraintMenuCommand;
-                self.constraint_form_annotational = cmd
+                let annotational = cmd
                     .trim_start_matches("DCFORM_SET ")
                     .trim()
                     .eq_ignore_ascii_case("Annotational");
+                let dimensions = self.tabs[i]
+                    .scene
+                    .selected_dimensional_constraint_dimensions();
+                if !dimensions.is_empty() {
+                    let form = self.constraint_form_name();
+                    let changing: Vec<_> = dimensions
+                        .iter()
+                        .copied()
+                        .filter(|handle| {
+                            self.tabs[i].scene.dimension_is_annotational(*handle) != annotational
+                        })
+                        .collect();
+                    if changing.is_empty() {
+                        self.constraint_form_annotational = annotational;
+                        self.command_line.push_output(&format!(
+                            "The selected dimensional constraint already uses the {form} form."
+                        ));
+                        self.tabs[i].active_cmd = None;
+                        self.tabs[i].snap_result = None;
+                        return Some(self.finish_dispatch(cmd));
+                    }
+                    let layer = self.tabs[i].active_layer.clone();
+                    let pending = self.begin_undo(i, "Constraint form", changing.len(), false);
+                    let mut converted = 0;
+                    for handle in &changing {
+                        if self.tabs[i].scene.set_dimensional_constraint_form(
+                            *handle,
+                            annotational,
+                            &layer,
+                        ) {
+                            converted += 1;
+                        }
+                    }
+                    if converted > 0 {
+                        self.constraint_form_annotational = annotational;
+                        self.tabs[i].scene.refresh_dynamic_dimension_texts();
+                        self.tabs[i].scene.refresh_dynamic_dimension_scales(true);
+                        self.tabs[i].scene.refresh_hidden_dynamic_dimensions();
+                        self.tabs[i].dirty = true;
+                        self.refresh_properties();
+                    }
+                    let failed = changing.len() - converted;
+                    if failed > 0 {
+                        self.command_line.push_error(&format!(
+                            "{failed} of {} dimensional constraints could not be changed; a locked layer or a read-only dimension blocks them.",
+                            changing.len()
+                        ));
+                    } else {
+                        self.command_line.push_output(&format!(
+                            "{converted} dimensional constraint{} converted to the {form} form.",
+                            if converted == 1 { "" } else { "s" }
+                        ));
+                    }
+                    self.tabs[i].active_cmd = None;
+                    self.tabs[i].snap_result = None;
+                    if let Some(pd) = pending {
+                        if converted > 0 {
+                            self.commit_undo_delta(i, pd);
+                        } else {
+                            // Nothing changed, so the recording must not
+                            // become an empty history step.
+                            let _ = self.tabs[i].scene.take_undo_recording();
+                        }
+                    }
+                    return Some(self.finish_dispatch(cmd));
+                }
+                if !self.tabs[i].scene.selected_handles_in_order().is_empty() {
+                    self.command_line.push_error(
+                        "No dimensional constraint is selected; select its dimension and run DCFORM again.",
+                    );
+                    self.tabs[i].active_cmd = None;
+                    self.tabs[i].snap_result = None;
+                    return Some(self.finish_dispatch(cmd));
+                }
+                self.constraint_form_annotational = annotational;
                 self.command_line.push_output(&format!(
-                    "Current settings:  Constraint form = {}",
+                    "Current settings:  Constraint form = {} (used by new dimensional constraints).",
                     self.constraint_form_name()
                 ));
                 let new_cmd = DimConstraintMenuCommand::new(self.dim_constraint_last);

@@ -280,11 +280,18 @@ pub(crate) fn constraint_records_json(scene: &crate::scene::Scene, entity: codec
                     kernel_constraints::diagnosis::RedundancyKind::Redundant => "Redundant",
                     kernel_constraints::diagnosis::RedundancyKind::Conflicting => "Conflicting",
                 });
+            // A dimensional constraint's form lives on the dimension it
+            // draws; a geometric constraint has none.
+            let form = set
+                .dimensions
+                .get(&constraint.id)
+                .and_then(|dimension| scene.dimension_form(*dimension));
             records.push(json!({
                 "kind": constraint.kind.label(),
                 "participants": participants,
                 "enabled": constraint.enabled,
                 "conflict": conflict,
+                "form": form,
             }));
         }
     }
@@ -3649,7 +3656,8 @@ mod tests {
             "kind": "Parallel",
             "participants": [hex(first), hex(second)],
             "enabled": true,
-            "conflict": null
+            "conflict": null,
+            "form": null
         }]);
 
         let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"geometry"}"#);
@@ -3668,13 +3676,15 @@ mod tests {
                     "kind": "Parallel",
                     "participants": [hex(first), hex(second)],
                     "enabled": true,
-                    "conflict": null
+                    "conflict": null,
+                    "form": null
                 },
                 {
                     "kind": "Vertical",
                     "participants": [hex(second)],
                     "enabled": false,
-                    "conflict": null
+                    "conflict": null,
+                    "form": null
                 }
             ]),
             "{}",
@@ -3716,8 +3726,8 @@ mod tests {
         assert_eq!(
             entry["constraints"],
             json!([
-                {"kind": "Parallel", "participants": [hex(first), hex(second)], "enabled": true, "conflict": null},
-                {"kind": "Coincident", "participants": [hex(first)], "enabled": true, "conflict": null}
+                {"kind": "Parallel", "participants": [hex(first), hex(second)], "enabled": true, "conflict": null, "form": null},
+                {"kind": "Coincident", "participants": [hex(first)], "enabled": true, "conflict": null, "form": null}
             ]),
             "{entry}"
         );

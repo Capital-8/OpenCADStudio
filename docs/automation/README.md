@@ -364,7 +364,7 @@ maps onto these three steps rather than a native op.
 
 `query` entities of type `TEXT`/`MTEXT` return the raw stored string in `value` plus a formatting-free rendering in `text` (MTEXT inline codes such as `\A1;` or `\P` are resolved; `%%d`-style TEXT codes become their glyphs). With `detail:"full"`, degenerate-width text bounds are widened with a documented estimate (height × 0.8 × character count) so `bounds`-based region filters stay usable.
 
-Every entity above `summary` detail also carries `constraints` — the constraints referencing it, as `{kind, participants, enabled, conflict}` entries, where `conflict` names a constraint the solver flagged (`Redundant` or `Conflicting`) and is `null` otherwise (see the API spec for the exact shape).
+Every entity above `summary` detail also carries `constraints` — the constraints referencing it, as `{kind, participants, enabled, conflict, form}` entries, where `conflict` names a constraint the solver flagged (`Redundant` or `Conflicting`) and is `null` otherwise, and `form` is `Dynamic`/`Annotational` for a dimensional constraint's dimension (`null` for a geometric constraint) (see the API spec for the exact shape).
 
 ### Text operations — search, audit and replace
 

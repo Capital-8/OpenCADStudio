@@ -2670,6 +2670,88 @@ impl super::Scene {
             .is_some_and(|entity| !is_dynamic_dimension_layer(&entity.common().layer))
     }
 
+    /// The form a dimensional constraint's dimension uses, or `None` when the
+    /// dimension no longer resolves.
+    pub(crate) fn dimension_form(&self, handle: Handle) -> Option<&'static str> {
+        self.document.get_entity(handle)?;
+        Some(if self.dimension_is_annotational(handle) {
+            "Annotational"
+        } else {
+            "Dynamic"
+        })
+    }
+
+    /// The dimensions of the selected dimensional constraints. A constraint
+    /// is selected through the dimension entity that draws it.
+    pub(crate) fn selected_dimensional_constraint_dimensions(&self) -> Vec<Handle> {
+        let selected = self.selected_handles_in_order();
+        let mut handles: Vec<Handle> = Vec::new();
+        for set in &self.parametric_constraints {
+            for dimension in set.dimensions.values() {
+                if selected.contains(dimension) && !handles.contains(dimension) {
+                    handles.push(*dimension);
+                }
+            }
+        }
+        handles.sort_by_key(|handle| handle.value());
+        handles
+    }
+
+    /// Switches a dimensional constraint's dimension between the dynamic and
+    /// annotational forms, placing an annotational one on `annotational_layer`.
+    /// Returns false when `handle` is not a dimensional constraint's dimension
+    /// or already uses the requested form.
+    pub(crate) fn set_dimensional_constraint_form(
+        &mut self,
+        handle: Handle,
+        annotational: bool,
+        annotational_layer: &str,
+    ) -> bool {
+        use crate::entities::dim_override as ov;
+        let is_dimensional = self
+            .parametric_constraints
+            .iter()
+            .any(|set| set.dimensions.values().any(|dimension| *dimension == handle));
+        if !is_dimensional || self.dimension_is_annotational(handle) == annotational {
+            return false;
+        }
+        let Some(mut entity) = self.document.get_entity(handle).cloned() else {
+            return false;
+        };
+        if !matches!(entity, codec::EntityType::Dimension(_)) {
+            return false;
+        }
+        if annotational {
+            entity.as_entity_mut().set_layer(annotational_layer.to_string());
+            entity.common_mut().color = codec::types::Color::ByLayer;
+            // The screen-size overrides belong to the dynamic form; an
+            // annotational dimension draws at its style's size.
+            for code in [
+                ov::DIMSCALE,
+                ov::DIMGAP,
+                ov::DIMEXO,
+                ov::DIMEXE,
+                ov::DIMASZ,
+                ov::DIMTAD,
+                ov::DIMTIH,
+                ov::DIMTOH,
+            ] {
+                ov::set_on_entity(&mut entity, code, None);
+            }
+        } else {
+            self.ensure_dynamic_dimension_layer();
+            entity
+                .as_entity_mut()
+                .set_layer(DYNAMIC_DIMENSION_LAYER.to_string());
+            entity.common_mut().color = codec::types::Color::Rgb {
+                r: 103,
+                g: 109,
+                b: 118,
+            };
+        }
+        self.update_entity(entity)
+    }
+
     /// The document as written to a file: a dynamic dimension's screen-size
     /// overrides are a display matter and stay out of the file, and so does
     /// what resolving an external reference merged in (its geometry, nested
