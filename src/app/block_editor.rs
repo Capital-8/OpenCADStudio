@@ -49,6 +49,33 @@ fn same_constraints(
         && before.dimensions == after.dimensions
 }
 
+/// Number of block references in the drawing that resolve to `definition`,
+/// including references whose anonymous representation record points at it.
+/// References nested inside another definition are not drawing instances and
+/// are left out.
+pub(super) fn block_reference_count(
+    scene: &crate::scene::Scene,
+    definition: codec::Handle,
+) -> usize {
+    let document = &scene.document;
+    // Model- and paper-space records also list their contents; only records
+    // without a layout are definitions whose children are not drawn directly.
+    let inside_definition: FxHashSet<codec::Handle> = document
+        .block_records
+        .iter()
+        .filter(|record| record.layout.is_null())
+        .flat_map(|record| record.entity_handles.iter().copied())
+        .collect();
+    document
+        .entities()
+        .filter(|entity| matches!(entity, EntityType::Insert(_)))
+        .filter(|entity| !inside_definition.contains(&entity.common().handle))
+        .filter(|entity| {
+            document.dynamic_definition_for_insert(entity.common().handle) == Some(definition)
+        })
+        .count()
+}
+
 fn normalize_allocation(document: &mut Document, next: u64) {
     if document.next_handle() < next {
         document.header.handle_seed = next - 1;
@@ -782,10 +809,14 @@ impl OpenCADStudio {
         continuation: BlockEditContinuation,
     ) -> Task<Message> {
         let id = self.tabs[i].id;
-        if self.tabs[i].active_block_edit_session().is_some() {
+        if let Some(definition) = self.tabs[i]
+            .active_block_edit_session()
+            .map(|session| session.br_handle)
+        {
             if self.block_edit_dirty(i) {
+                let references = block_reference_count(&self.tabs[i].scene, definition);
                 self.active_tab = i;
-                self.pending_block_close = Some((self.tabs[i].id, continuation));
+                self.pending_block_close = Some((self.tabs[i].id, continuation, references));
                 self.active_modal = Some(ModalKind::BlockEditChanges);
                 return Task::none();
             }
@@ -832,7 +863,7 @@ impl OpenCADStudio {
     }
 
     pub(super) fn resolve_block_edit_close(&mut self, save: bool) -> Task<Message> {
-        let Some((id, continuation)) = self.pending_block_close.clone() else {
+        let Some((id, continuation, _references)) = self.pending_block_close.clone() else {
             return Task::none();
         };
         let Some(i) = self.tabs.iter().position(|tab| tab.id == id) else {

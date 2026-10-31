@@ -1,3 +1,4 @@
+use super::block_editor::block_reference_count;
 use super::{Message, ModalKind, OpenCADStudio};
 use codec::entities::{Insert, Line};
 use codec::types::Vector3;
@@ -4343,6 +4344,43 @@ fn discard_preserves_drawing_redo_and_never_leaks_local_edits() {
     assert_eq!(app.tabs[app.active_tab].history.redo_stack.len(), main_redo);
     app.redo_steps(1);
     assert_eq!(members(&app).len(), 1);
+}
+
+#[test]
+fn block_reference_count_counts_every_insert_of_the_definition() {
+    let (mut app, _reference) = fixture();
+    let i = app.active_tab;
+    let definition = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("EDIT_ME")
+        .unwrap()
+        .handle;
+    assert_eq!(block_reference_count(&app.tabs[i].scene, definition), 1);
+    app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new("EDIT_ME", Vector3::ZERO)))
+        .unwrap();
+    assert_eq!(block_reference_count(&app.tabs[i].scene, definition), 2);
+    // Another definition's references do not count towards this one.
+    app.tabs[i]
+        .scene
+        .define_block_raw("OTHER", Vector3::ZERO, vec![]);
+    app.tabs[i]
+        .scene
+        .document
+        .add_entity(EntityType::Insert(Insert::new("OTHER", Vector3::ZERO)))
+        .unwrap();
+    assert_eq!(block_reference_count(&app.tabs[i].scene, definition), 2);
+    // A reference nested inside another definition is not a drawing instance.
+    app.tabs[i].scene.define_block_raw(
+        "NESTED",
+        Vector3::ZERO,
+        vec![EntityType::Insert(Insert::new("EDIT_ME", Vector3::ZERO))],
+    );
+    assert_eq!(block_reference_count(&app.tabs[i].scene, definition), 2);
 }
 
 #[test]

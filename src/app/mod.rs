@@ -1869,7 +1869,7 @@ pub(super) struct OpenCADStudio {
     // ── Unsaved-changes dialog ────────────────────────────────────────────
     /// Set when the user tries to close a tab or quit while there are unsaved changes.
     pending_close: Option<PendingClose>,
-    pending_block_close: Option<(u64, block_editor::BlockEditContinuation)>,
+    pending_block_close: Option<(u64, block_editor::BlockEditContinuation, usize)>,
     /// Stable document ids waiting to be closed by "Close All" or
     /// "Close All Other Drawings". Dirty drawings pause this queue at the
     /// existing unsaved-changes dialog and resume after Save or Discard.
