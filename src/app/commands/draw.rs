@@ -1128,12 +1128,28 @@ impl OpenCADStudio {
             }
 
             "GCRESET" => {
-                let scope = self.tabs[i].current_parametric_scope();
-                let count = self.tabs[i]
-                    .scene
-                    .set_parametric_constraint_visibility(scope, None, false, true);
-                self.command_line
-                    .push_output(format!("{} constraint indicator(s) reset.", count).as_str());
+                let handles = self.tabs[i].scene.selected_handles_in_order();
+                if handles.is_empty() {
+                    self.command_line
+                        .push_error(crate::t!("No objects selected.").as_ref());
+                } else {
+                    let scope = self.tabs[i].current_parametric_scope();
+                    let count = self.tabs[i].scene.set_parametric_constraint_visibility(
+                        scope,
+                        Some(&handles),
+                        false,
+                        true,
+                    );
+                    if count == 0 {
+                        self.command_line.push_output(
+                            crate::t!("No constraint indicators on the selection.").as_ref(),
+                        );
+                    } else {
+                        self.command_line.push_output(
+                            crate::tf!("{} constraint indicator(s) reset.", count).as_ref(),
+                        );
+                    }
+                }
             }
 
             "CONSTRAINTBAR_RESET" => {

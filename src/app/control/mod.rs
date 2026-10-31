@@ -3135,6 +3135,196 @@ mod tests {
         );
     }
 
+    /// A pickfirst selection is the selection `GCHIDE`/`GCSHOW` must act on;
+    /// completing without touching it reports success for doing nothing.
+    #[test]
+    fn pickfirst_hide_and_show_apply_to_the_selected_constraint() {
+        use crate::scene::parametric_constraints::ParametricScope;
+
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        let handle = request(&mut app, json!({"op":"query","type":"Line"}))["entities"][0]["handle"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        request(&mut app, json!({"op":"select","handles":[&handle]}));
+        request(&mut app, json!({"op":"run","cmd":"GCHORIZONTAL"}));
+        let id = app.tabs[app.active_tab]
+            .scene
+            .parametric_constraint_set(ParametricScope::ModelSpace)
+            .and_then(|set| set.constraints.last())
+            .map(|constraint| constraint.id)
+            .expect("the horizontal constraint was created");
+        assert!(app.tabs[app.active_tab]
+            .scene
+            .is_parametric_constraint_visible(ParametricScope::ModelSpace, id));
+
+        let hidden = request(&mut app, json!({"op":"run","cmd":"GCHIDE"}));
+        assert_eq!(hidden["ok"], true, "{hidden}");
+        assert!(
+            !app.tabs[app.active_tab]
+                .scene
+                .is_parametric_constraint_visible(ParametricScope::ModelSpace, id),
+            "pickfirst GCHIDE hides the constraint on the selection: {hidden}"
+        );
+
+        let shown = request(&mut app, json!({"op":"run","cmd":"GCSHOW"}));
+        assert_eq!(shown["ok"], true, "{shown}");
+        assert!(
+            app.tabs[app.active_tab]
+                .scene
+                .is_parametric_constraint_visible(ParametricScope::ModelSpace, id),
+            "pickfirst GCSHOW shows it again: {shown}"
+        );
+    }
+
+    /// The same pickfirst rule inside the definition editor, where the
+    /// constraint lives in the definition's own scope.
+    #[test]
+    fn pickfirst_hide_applies_inside_the_definition_editor() {
+        use crate::scene::parametric_constraints::ParametricScope;
+
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        let i = app.active_tab;
+        app.tabs[i].scene.define_block_raw(
+            "HIDE_ME",
+            codec::types::Vector3::ZERO,
+            vec![codec::EntityType::Line(codec::entities::Line::from_points(
+                codec::types::Vector3::ZERO,
+                codec::types::Vector3::UNIT_X,
+            ))],
+        );
+        let definition = app.tabs[i].scene.document.block_records.get("HIDE_ME").unwrap().handle;
+        let reference = app.tabs[i]
+            .scene
+            .document
+            .add_entity(codec::EntityType::Insert(codec::entities::Insert::new(
+                "HIDE_ME",
+                codec::types::Vector3::ZERO,
+            )))
+            .unwrap();
+        let _ = app.dispatch_command(&format!("BEDIT_BEGIN:{}", reference.value()));
+        assert!(app.tabs[i].active_block_edit.is_some());
+        let line = app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .get("HIDE_ME")
+            .unwrap()
+            .entity_handles[0];
+        request(&mut app, json!({"op":"select","handles":[format!("{:X}", line.value())]}));
+        request(&mut app, json!({"op":"run","cmd":"GCHORIZONTAL"}));
+        let id = app.tabs[i]
+            .scene
+            .parametric_constraint_set(ParametricScope::Block(definition))
+            .and_then(|set| set.constraints.last())
+            .map(|constraint| constraint.id)
+            .expect("the horizontal constraint was created in the definition");
+        assert!(app.tabs[i]
+            .scene
+            .is_parametric_constraint_visible(ParametricScope::Block(definition), id));
+
+        let hidden = request(&mut app, json!({"op":"start","cmd":"GCHIDE"}));
+        assert_eq!(hidden["ok"], true, "{hidden}");
+        assert!(
+            !app.tabs[i]
+                .scene
+                .is_parametric_constraint_visible(ParametricScope::Block(definition), id),
+            "pickfirst GCHIDE inside the editor hides the definition constraint: {hidden}"
+        );
+    }
+
+    /// `GCRESET` resets the constraint display of what it was given, not the
+    /// whole space: another line's hidden indicator stays hidden. With nothing
+    /// selected there is nothing to reset, so it refuses instead of quietly
+    /// restoring the whole drawing.
+    #[test]
+    fn gcreset_resets_only_the_selected_constraint_display() {
+        use crate::scene::parametric_constraints::ParametricScope;
+
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,5 10,5"}));
+        let handles: Vec<String> = request(&mut app, json!({"op":"query","type":"Line"}))
+            ["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .collect();
+        for handle in &handles {
+            request(&mut app, json!({"op":"select","handles":[handle]}));
+            request(&mut app, json!({"op":"run","cmd":"GCHORIZONTAL"}));
+        }
+        let ids: Vec<_> = app.tabs[app.active_tab]
+            .scene
+            .parametric_constraint_set(ParametricScope::ModelSpace)
+            .unwrap()
+            .constraints
+            .iter()
+            .map(|constraint| constraint.id)
+            .collect();
+        assert_eq!(ids.len(), 2);
+        for handle in &handles {
+            request(&mut app, json!({"op":"select","handles":[handle]}));
+            request(&mut app, json!({"op":"run","cmd":"GCHIDE"}));
+        }
+        assert!(ids.iter().all(|id| !app.tabs[app.active_tab]
+            .scene
+            .is_parametric_constraint_visible(ParametricScope::ModelSpace, *id)));
+
+        request(&mut app, json!({"op":"select","handles":[&handles[0]]}));
+        request(&mut app, json!({"op":"run","cmd":"GCRESET"}));
+        let scene = &app.tabs[app.active_tab].scene;
+        assert!(
+            scene.is_parametric_constraint_visible(ParametricScope::ModelSpace, ids[0]),
+            "the selected constraint is shown again"
+        );
+        assert!(
+            !scene.is_parametric_constraint_visible(ParametricScope::ModelSpace, ids[1]),
+            "the unselected constraint stays hidden"
+        );
+
+        request(&mut app, json!({"op":"select","clear":true}));
+        request(&mut app, json!({"op":"run","cmd":"GCRESET"}));
+        assert!(
+            !app.tabs[app.active_tab]
+                .scene
+                .is_parametric_constraint_visible(ParametricScope::ModelSpace, ids[1]),
+            "no selection means no reset, so the remaining hidden indicator stays hidden"
+        );
+        let history = request(&mut app, json!({"op":"history"}));
+        assert!(
+            history["entries"].as_array().is_some_and(|entries| entries
+                .iter()
+                .any(|entry| entry["text"]
+                    .as_str()
+                    .is_some_and(|text| text.ends_with("No objects selected.")))),
+            "the refusal says why nothing was reset: {history}"
+        );
+
+        request(&mut app, json!({"op":"run","cmd":"LINE 20,20 30,20"}));
+        let bare = request(&mut app, json!({"op":"query","type":"Line"}))["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .find(|handle| !handles.contains(handle))
+            .unwrap();
+        request(&mut app, json!({"op":"select","handles":[&bare]}));
+        request(&mut app, json!({"op":"run","cmd":"GCRESET"}));
+        let history = request(&mut app, json!({"op":"history"}));
+        assert!(
+            history["entries"].as_array().is_some_and(|entries| entries
+                .iter()
+                .any(|entry| entry["text"] == "No constraint indicators on the selection.")),
+            "a selection with no constraints is not reported as a reset: {history}"
+        );
+    }
+
     #[test]
     fn command_discovery_explains_batch_and_interactive_use() {
         let mut app = OpenCADStudio::new_for_test();
