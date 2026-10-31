@@ -4043,7 +4043,7 @@ mod tests {
         let done = user_select_result(&mut app, "us-c");
         assert_eq!(
             done["result"]["entities"][0]["constraints"],
-            json!([{"kind":"Fixed","participants":[handle],"enabled":true}]),
+            json!([{"kind":"Fixed","participants":[handle],"enabled":true,"conflict":null}]),
             "{done}"
         );
 
@@ -4378,7 +4378,7 @@ mod tests {
         let read = request(&mut app, json!({"op":"get_selection"}));
         assert_eq!(
             read["result"]["entities"][0]["constraints"],
-            json!([{"kind": "Fixed", "participants": [circle_handle], "enabled": true}]),
+            json!([{"kind": "Fixed", "participants": [circle_handle], "enabled": true, "conflict": null}]),
             "{read}"
         );
     }

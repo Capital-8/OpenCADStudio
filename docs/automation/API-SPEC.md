@@ -360,8 +360,11 @@ Every entity returned above `summary` detail also carries `constraints`: one
 entry per constraint the solver holds on it — `kind` (the constraint's
 canonical kind name, shared by the constraint commands and reports),
 `participants` (every distinct entity handle the constraint relates, in
-reference order) and `enabled` (`false` for a constraint kept but not solved).
-An empty array states that the entity carries no constraint. A `fields`
+reference order), `enabled` (`false` for a constraint kept but not solved) and
+`conflict` (`null`, or `Redundant` when the solver found the constraint
+already implied by the rest, `Conflicting` when removing it would let the rest
+solve without satisfying it). An empty array states that the entity carries no
+constraint. A `fields`
 projection that does not name `constraints` drops it, like any other property.
 The same array is on each `records` `entities` row, each `get_selection`
 entity, each `user_select` hand-over and each capture candidate, so the

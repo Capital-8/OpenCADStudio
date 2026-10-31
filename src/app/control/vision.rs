@@ -679,7 +679,8 @@ mod tests {
             json!([{
                 "kind": "Vertical",
                 "participants": [child_hex],
-                "enabled": true
+                "enabled": true,
+                "conflict": null
             }]),
             "{visible}"
         );

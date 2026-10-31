@@ -272,10 +272,19 @@ pub(crate) fn constraint_records_json(scene: &crate::scene::Scene, entity: codec
                     participants.push(handle);
                 }
             }
+            let conflict = set
+                .conflicts
+                .iter()
+                .find(|(id, _)| *id == constraint.id)
+                .map(|(_, kind)| match kind {
+                    kernel_constraints::diagnosis::RedundancyKind::Redundant => "Redundant",
+                    kernel_constraints::diagnosis::RedundancyKind::Conflicting => "Conflicting",
+                });
             records.push(json!({
                 "kind": constraint.kind.label(),
                 "participants": participants,
                 "enabled": constraint.enabled,
+                "conflict": conflict,
             }));
         }
     }
@@ -3639,7 +3648,8 @@ mod tests {
         let parallel = json!([{
             "kind": "Parallel",
             "participants": [hex(first), hex(second)],
-            "enabled": true
+            "enabled": true,
+            "conflict": null
         }]);
 
         let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"geometry"}"#);
@@ -3657,12 +3667,14 @@ mod tests {
                 {
                     "kind": "Parallel",
                     "participants": [hex(first), hex(second)],
-                    "enabled": true
+                    "enabled": true,
+                    "conflict": null
                 },
                 {
                     "kind": "Vertical",
                     "participants": [hex(second)],
-                    "enabled": false
+                    "enabled": false,
+                    "conflict": null
                 }
             ]),
             "{}",
@@ -3704,10 +3716,79 @@ mod tests {
         assert_eq!(
             entry["constraints"],
             json!([
-                {"kind": "Parallel", "participants": [hex(first), hex(second)], "enabled": true},
-                {"kind": "Coincident", "participants": [hex(first)], "enabled": true}
+                {"kind": "Parallel", "participants": [hex(first), hex(second)], "enabled": true, "conflict": null},
+                {"kind": "Coincident", "participants": [hex(first)], "enabled": true, "conflict": null}
             ]),
             "{entry}"
+        );
+    }
+
+    /// A flagged constraint is named as such on the entity's constraint
+    /// records, so the conflict badge has a read path that says which
+    /// constraint disagrees and how.
+    #[test]
+    fn query_names_a_flagged_constraint_and_its_kind() {
+        use crate::scene::parametric_constraints::{
+            ConstraintKind, ParametricRef, ParametricScope,
+        };
+
+        let mut app = super::OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,3"}"#);
+        let i = app.active_tab;
+        let line = app.tabs[i]
+            .scene
+            .document
+            .entities()
+            .find(|entity| matches!(entity, codec::EntityType::Line(_)))
+            .map(|entity| entity.common().handle)
+            .expect("the line");
+        {
+            let set = app.tabs[i]
+                .scene
+                .parametric_constraint_set_mut(ParametricScope::ModelSpace);
+            set.add(ConstraintKind::Horizontal, vec![ParametricRef::whole(line)], None);
+            set.add(ConstraintKind::Horizontal, vec![ParametricRef::whole(line)], None);
+        }
+        app.tabs[i]
+            .scene
+            .bump_entities(&[(line, crate::scene::ChangeKind::Modified)]);
+        assert_eq!(
+            app.tabs[i]
+                .scene
+                .parametric_constraint_set(ParametricScope::ModelSpace)
+                .map(|set| set.conflicts.len())
+                .unwrap_or(0),
+            1,
+            "the duplicate is flagged"
+        );
+
+        let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"geometry"}"#);
+        let constraints = q["entities"][0]["constraints"]
+            .as_array()
+            .expect("constraint records");
+        assert_eq!(constraints.len(), 2, "{q}");
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| constraint["kind"] == "Horizontal"),
+            "{q}"
+        );
+        assert_eq!(
+            constraints
+                .iter()
+                .filter(|constraint| constraint["conflict"] == "Redundant")
+                .count(),
+            1,
+            "the flagged duplicate is named, the other stays clear: {q}"
+        );
+        assert_eq!(
+            constraints
+                .iter()
+                .filter(|constraint| constraint["conflict"].is_null())
+                .count(),
+            1,
+            "{q}"
         );
     }
 
