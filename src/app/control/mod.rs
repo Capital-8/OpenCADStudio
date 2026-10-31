@@ -3325,6 +3325,139 @@ mod tests {
         );
     }
 
+    /// A short constraint alias either applies what its prompt names or
+    /// refuses with a reason; it may not answer success while changing
+    /// nothing. A refused pick-first selection also leaves no command behind.
+    #[test]
+    fn constraint_aliases_act_on_the_selection_or_refuse() {
+        use crate::scene::parametric_constraints::{ConstraintKind, ParametricScope};
+
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,5 10,5"}));
+        request(&mut app, json!({"op":"run","cmd":"CIRCLE 0,20 5"}));
+        let lines: Vec<String> = request(&mut app, json!({"op":"query","type":"Line"}))["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .collect();
+        let circle = request(&mut app, json!({"op":"query","type":"Circle"}))["entities"][0]
+            ["handle"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let constraints = |app: &OpenCADStudio| {
+            app.tabs[app.active_tab]
+                .scene
+                .parametric_constraint_set(ParametricScope::ModelSpace)
+                .map(|set| {
+                    set.constraints
+                        .iter()
+                        .map(|constraint| constraint.kind)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+
+        // Two lines form a collinear pair, so the alias applies it.
+        request(&mut app, json!({"op":"select","handles":[&lines[0], &lines[1]]}));
+        let colinear = request(&mut app, json!({"op":"run","cmd":"LCONSTRAINT"}));
+        assert_eq!(colinear["ok"], true, "{colinear}");
+        assert!(
+            constraints(&app).contains(&ConstraintKind::Colinear),
+            "LCONSTRAINT constrains the two picked lines: {colinear}"
+        );
+
+        // One line has no normal partner to relate to: refuse.
+        request(&mut app, json!({"op":"select","handles":[&lines[0]]}));
+        let short_normal = request(&mut app, json!({"op":"run","cmd":"NRCONSTRAINT"}));
+        assert_eq!(
+            short_normal["ok"], false,
+            "NRCONSTRAINT must refuse rather than report success with no change: {short_normal}"
+        );
+        assert!(
+            app.tabs[app.active_tab].active_cmd.is_none(),
+            "a refused pick-first selection leaves no command waiting"
+        );
+
+        // A line and a circle are a normal pair, so the alias applies it.
+        request(&mut app, json!({"op":"select","handles":[&lines[0], &circle]}));
+        let normal = request(&mut app, json!({"op":"run","cmd":"NRCONSTRAINT"}));
+        assert_eq!(normal["ok"], true, "{normal}");
+        assert!(
+            constraints(&app).contains(&ConstraintKind::Normal),
+            "NRCONSTRAINT constrains the picked line and circle: {normal}"
+        );
+
+        // A single entity is all the midpoint alias needs to ask for its
+        // point, and asking is not a silent completion.
+        request(&mut app, json!({"op":"select","handles":[&lines[1]]}));
+        let midpoint = request(&mut app, json!({"op":"run","cmd":"MPCONSTRAINT"}));
+        assert_eq!(midpoint["status"], "waiting_input", "{midpoint}");
+        assert!(app.tabs[app.active_tab].active_cmd.is_some());
+        app.tabs[app.active_tab].active_cmd = None;
+
+        // Two objects are more than the point-on-curve alias can place a
+        // point against, so it refuses instead of answering success.
+        request(&mut app, json!({"op":"select","handles":[&lines[0], &circle]}));
+        let on_curve = request(&mut app, json!({"op":"run","cmd":"OCCONSTRAINT"}));
+        assert_eq!(
+            on_curve["ok"], false,
+            "OCCONSTRAINT must refuse a two-object pick: {on_curve}"
+        );
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+
+        // The distance alias takes one object; two is a refusal.
+        request(&mut app, json!({"op":"select","handles":[&lines[0], &lines[1]]}));
+        let distance = request(&mut app, json!({"op":"run","cmd":"DCONSTRAINT"}));
+        assert_eq!(
+            distance["ok"], false,
+            "DCONSTRAINT must refuse two objects rather than report success: {distance}"
+        );
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+
+        // With nothing picked it asks for the objects instead.
+        request(&mut app, json!({"op":"select","clear":true}));
+        let distance_prompt = request(&mut app, json!({"op":"run","cmd":"DCONSTRAINT"}));
+        assert_eq!(distance_prompt["status"], "waiting_input", "{distance_prompt}");
+        app.tabs[app.active_tab].active_cmd = None;
+
+        // One object the distance alias cannot measure: refuse, and name the
+        // objects it does accept.
+        request(&mut app, json!({"op":"run","cmd":"POINT 5,5"}));
+        let point = request(&mut app, json!({"op":"query","type":"Point"}))["entities"][0]["handle"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        request(&mut app, json!({"op":"select","handles":[&point]}));
+        let unmeasurable = request(&mut app, json!({"op":"run","cmd":"DCONSTRAINT"}));
+        assert_eq!(
+            unmeasurable["ok"], false,
+            "DCONSTRAINT must refuse an object it cannot measure: {unmeasurable}"
+        );
+        assert!(app.tabs[app.active_tab].active_cmd.is_none());
+
+        // The perpendicular and tangent aliases also refuse a wrong count
+        // instead of reporting success with nothing applied.
+        for cmd in ["QCONSTRAINT", "TCONSTRAINT"] {
+            request(&mut app, json!({"op":"select","handles":[&lines[0]]}));
+            let refused = request(&mut app, json!({"op":"run","cmd":cmd}));
+            assert_eq!(refused["ok"], false, "{cmd} must refuse one object: {refused}");
+            assert!(app.tabs[app.active_tab].active_cmd.is_none());
+        }
+
+        // A refusal must not leave the symmetric command mid-flight.
+        request(&mut app, json!({"op":"select","handles":[&lines[0], &lines[1]]}));
+        let symmetric = request(&mut app, json!({"op":"run","cmd":"SYCONSTRAINT"}));
+        assert_eq!(symmetric["ok"], false, "{symmetric}");
+        assert!(
+            app.tabs[app.active_tab].active_cmd.is_none(),
+            "a failed symmetric pick cancels the command instead of leaving it waiting: {symmetric}"
+        );
+    }
+
     #[test]
     fn command_discovery_explains_batch_and_interactive_use() {
         let mut app = OpenCADStudio::new_for_test();

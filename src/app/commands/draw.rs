@@ -1846,8 +1846,9 @@ impl OpenCADStudio {
                     self.command_line.push_info(&command.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(command));
                 } else if handles.len() != 2 {
+                    self.tabs[i].scene.deselect_all();
                     self.command_line
-                        .push_output("Select exactly two perpendicular-compatible objects.");
+                        .push_error("Select exactly two perpendicular-compatible objects.");
                 } else {
                     let picks = handles
                         .iter()
@@ -1887,8 +1888,9 @@ impl OpenCADStudio {
                     self.command_line.push_info(&command.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(command));
                 } else if handles.len() != 2 {
+                    self.tabs[i].scene.deselect_all();
                     self.command_line
-                        .push_output("Select exactly two tangent-compatible objects.");
+                        .push_error("Select exactly two tangent-compatible objects.");
                 } else {
                     let refs = handles
                         .iter()
@@ -1958,7 +1960,8 @@ impl OpenCADStudio {
                     self.command_line.push_info(&sel.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(sel));
                 } else if handles.len() != 2 {
-                    self.command_line.push_output(
+                    self.tabs[i].scene.deselect_all();
+                    self.command_line.push_error(
                         "Select exactly two entities (first = reference, second = the one that moves), then run this constraint again.",
                     );
                 } else {
@@ -2053,9 +2056,6 @@ impl OpenCADStudio {
                     self.command_line.push_error(
                         "Symmetric: select two compatible objects followed by a line axis.",
                     );
-                    let command = SymmetricConstraintCommand::new();
-                    self.command_line.push_info(&command.prompt());
-                    self.tabs[i].active_cmd = Some(Box::new(command));
                 }
             }
 
@@ -2067,7 +2067,8 @@ impl OpenCADStudio {
                     self.command_line.push_info(&sel.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(sel));
                 } else if handles.len() != 1 {
-                    self.command_line.push_output(
+                    self.tabs[i].scene.deselect_all();
+                    self.command_line.push_error(
                         "Select exactly one entity (the circle or line the point should attach to), then run this constraint again.",
                     );
                 } else {
@@ -2151,7 +2152,8 @@ impl OpenCADStudio {
                     self.command_line.push_info(&sel.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(sel));
                 } else if handles.len() != 1 {
-                    self.command_line.push_output(
+                    self.tabs[i].scene.deselect_all();
+                    self.command_line.push_error(
                         "Select exactly one line or circle, then run this constraint again.",
                     );
                 } else {
@@ -2173,9 +2175,12 @@ impl OpenCADStudio {
                             self.command_line.push_info(&new_cmd.prompt());
                             self.tabs[i].active_cmd = Some(Box::new(new_cmd));
                         }
-                        None => self
-                            .command_line
-                            .push_output("Select a line or a circle for a distance constraint."),
+                        None => {
+                            self.tabs[i].scene.deselect_all();
+                            self.command_line.push_error(
+                                "Select a line, circle or arc for a distance constraint.",
+                            );
+                        }
                     }
                 }
             }
