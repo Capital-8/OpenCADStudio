@@ -226,6 +226,8 @@ pub(crate) fn compute_grounding(
         handle: codec::Handle,
         entity_type: &'static str,
         layer: String,
+        owner: codec::Handle,
+        space: Option<String>,
         screen_pixel: [i32; 2],
         screen_bounds: [i32; 4],
         world_center: [f64; 3],
@@ -235,6 +237,13 @@ pub(crate) fn compute_grounding(
 
     let selected_set: std::collections::HashSet<codec::Handle> =
         tab.scene.selected_handles_in_order().into_iter().collect();
+    let space_names: rustc_hash::FxHashMap<codec::Handle, String> = tab
+        .scene
+        .document
+        .block_records
+        .iter()
+        .map(|record| (record.handle, record.name.clone()))
+        .collect();
 
     let mut candidates = Vec::new();
 
@@ -281,11 +290,14 @@ pub(crate) fn compute_grounding(
                 let area = (width * (f64::from(s_max_y) - f64::from(s_min_y)).abs()) as f32;
                 let selected = selected_set.contains(&handle);
                 let layer = entity.common().layer.clone();
+                let owner = entity.common().owner_handle;
 
                 candidates.push(Candidate {
                     handle,
                     entity_type: crate::entities::names::ui_name(entity),
                     layer,
+                    owner,
+                    space: space_names.get(&owner).cloned(),
                     screen_pixel: [px, py],
                     screen_bounds: [s_min_x, s_min_y, s_max_x, s_max_y],
                     world_center: [center.x, center.y, center.z],
@@ -316,6 +328,8 @@ pub(crate) fn compute_grounding(
                 "handle": format!("{:X}", cand.handle.value()),
                 "type": cand.entity_type,
                 "layer": cand.layer,
+                "owner": format!("{:X}", cand.owner.value()),
+                "space": cand.space,
                 "screen_pixel": cand.screen_pixel,
                 "screen_bounds": cand.screen_bounds,
                 "world_center": cand.world_center,
@@ -547,6 +561,52 @@ mod tests {
 
         let second = &grounding.visible_entities[1];
         assert_eq!(second["tag"], 2);
+    }
+
+    #[test]
+    fn grounding_names_the_space_each_visible_entity_is_drawn_in() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
+        app.automation_op(r#"{"op":"run","cmd":"LINE 20,0 30,0"}"#);
+        let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"summary"}"#);
+        let handles: Vec<String> = q["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(handles.len(), 2, "{q}");
+        let doc = app.automation_op(r#"{"protocol":1,"op":"state"}"#)["document_id"]
+            .as_u64()
+            .unwrap();
+        let defined = app.automation_op(&format!(
+            r#"{{"protocol":1,"op":"block_define","request_id":"g1","document_id":{doc},"name":"SPACE_SRC","base":[0,0,0],"handles":["{}"]}}"#,
+            handles[1]
+        ));
+        assert_eq!(defined["ok"], true, "{defined}");
+
+        app.tabs[0].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        app.tabs[0].scene.fit_all();
+        let grounding = compute_grounding(&app, 800.0, 600.0, 800, 600);
+        let visible = |space: &str| {
+            grounding
+                .visible_entities
+                .iter()
+                .find(|entity| entity["space"] == space)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{space} is not grounded: {:?}",
+                        grounding.visible_entities
+                    )
+                })
+                .clone()
+        };
+        let model = visible("*Model_Space");
+        assert_eq!(model["handle"], handles[0].as_str(), "{model}");
+        let child = visible("SPACE_SRC");
+        assert_ne!(child["owner"], model["owner"], "{model} {child}");
+        assert_ne!(child["handle"], model["handle"], "{model} {child}");
     }
 
     #[test]

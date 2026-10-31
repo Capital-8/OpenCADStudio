@@ -290,6 +290,9 @@ pub(crate) fn entity_json(
             crate::entities::names::ui_name(e).to_string(),
         ),
         "layer": c.layer,
+        // The record that draws the entity: a layout's block record for
+        // drawing geometry, a definition's for its children.
+        "owner": format!("{:X}", c.owner_handle.value()),
     });
     if detail == "summary" {
         return obj;
@@ -1355,6 +1358,13 @@ impl OpenCADStudio {
             }
         }
 
+        let space_names: rustc_hash::FxHashMap<codec::Handle, String> = tab
+            .scene
+            .document
+            .block_records
+            .iter()
+            .map(|record| (record.handle, record.name.clone()))
+            .collect();
         let mut matched = Vec::new();
         for e in tab.scene.document.entities() {
             if handles
@@ -1445,6 +1455,12 @@ impl OpenCADStudio {
                 e,
                 detail,
                 crate::plugin::entity_labels::custom_entity_class_label(&self.disabled_plugins, e),
+            );
+            entity.as_object_mut().expect("entity JSON object").insert(
+                "space".into(),
+                space_names
+                    .get(&e.common().owner_handle)
+                    .map_or(Value::Null, |name| json!(name.clone())),
             );
             if let Some(nearest) = nearest {
                 let object = entity.as_object_mut().expect("entity JSON object");
@@ -3494,6 +3510,59 @@ mod tests {
         );
         assert_eq!(r["ok"], false);
         assert_eq!(r["code"], "invalid_xdata");
+    }
+
+    #[test]
+    fn query_names_the_space_each_entity_is_drawn_in() {
+        let mut app = OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
+        let _ = app.automation_op(r#"{"op":"run","cmd":"LINE 20,0 30,0"}"#);
+        let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"summary"}"#);
+        let handles: Vec<String> = q["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(handles.len(), 2, "{q}");
+        let r = mutate(
+            &mut app,
+            &format!(
+                r#"{{"protocol":1,"op":"block_define","request_id":"sp1","document_id":{{doc}},"name":"SPACE_SRC","base":[0,0,0],"handles":["{}"]}}"#,
+                handles[1]
+            ),
+        );
+        assert_eq!(r["ok"], true, "{}", r["error"]);
+
+        let i = app.active_tab;
+        let record = |name: &str| {
+            app.tabs[i]
+                .scene
+                .document
+                .block_records
+                .iter()
+                .find(|record| record.name == name)
+                .map(|record| record.handle.value())
+                .unwrap_or_else(|| panic!("{name} is not defined"))
+        };
+        let model_space = record("*Model_Space");
+        let definition = record("SPACE_SRC");
+
+        let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"summary"}"#);
+        let entities = q["entities"].as_array().unwrap();
+        let in_model = entities
+            .iter()
+            .find(|entity| entity["space"] == "*Model_Space")
+            .unwrap_or_else(|| panic!("the model-space line is missing: {q}"));
+        assert_eq!(in_model["handle"], handles[0].as_str(), "{in_model}");
+        assert_eq!(in_model["owner"], format!("{model_space:X}"), "{in_model}");
+        let in_definition = entities
+            .iter()
+            .find(|entity| entity["space"] == "SPACE_SRC")
+            .unwrap_or_else(|| panic!("the definition's line is missing: {q}"));
+        assert_eq!(in_definition["owner"], format!("{definition:X}"), "{in_definition}");
+        assert_ne!(in_definition["handle"], handles[1].as_str(), "{in_definition}");
     }
 
     #[test]

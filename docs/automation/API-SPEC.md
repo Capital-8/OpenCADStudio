@@ -348,6 +348,14 @@ rendering in `text`; degenerate-width text bounds are widened with a
 documented estimate (height × 0.8 × character count) so region filters stay
 usable.
 
+Every returned entity, at every detail level including `summary`, carries
+`owner` (the owning block record's handle, uppercase hex; `0` when unowned) and
+`space` (that record's name:
+`*Model_Space` for drawing geometry, a layout's record on a sheet, a
+definition such as `*U1` for its children), so definition geometry can be
+filtered out of a drawing result. The capture's `visible_entities` /
+`annotations` records carry the same two fields.
+
 Companion reads: `entities` (alias), `layers`, `header`, `records`
 (paged, filterable database records), `record_schema` (generated type
 registry with write rules), `properties`, `measure` (length/area/bounds),
