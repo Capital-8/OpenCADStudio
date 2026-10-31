@@ -1227,14 +1227,16 @@ pub struct ParametricConstraintSet {
     /// persisted; a `ConflictResolverPanel` reads this rather than calling
     /// `kernel_constraints::diagnosis::classify_redundant` itself.
     pub conflicts: Vec<(ConstraintId, kernel_constraints::diagnosis::RedundancyKind)>,
-    /// Lazy reverse index for [`Self::constraints_touching`]: entity handle →
-    /// positions into `constraints`. `None` means "not built yet" and is
-    /// rebuilt unconditionally on the next query; a built index is rebuilt
-    /// whenever `constraints.len()` differs from the recorded length (the
-    /// `constraints` field is `pub`, so external pushes/removes are covered
-    /// by the length check; `enabled` is filtered at query time, so in-place
-    /// enable toggles never stale the recorded positions). The only known
-    /// in-place mutation of `refs` (and hence of the handle keys) is the
+    /// Lazy reverse index for [`Self::constraints_referencing`] and
+    /// [`Self::constraints_touching`]: entity handle → positions into
+    /// `constraints`, one entry per constraint however many of its refs name
+    /// the entity. `None` means "not built yet" and is rebuilt
+    /// unconditionally on the next query; a built index is rebuilt whenever
+    /// `constraints.len()` differs from the recorded length (the `constraints`
+    /// field is `pub`, so external pushes/removes are covered by the length
+    /// check; `constraints_touching` filters `enabled` at query time, so
+    /// in-place enable toggles never stale the recorded positions). The only
+    /// known in-place mutation of `refs` (and hence of the handle keys) is the
     /// Save Block As path in `app/block_editor.rs`, which rewrites
     /// `refs[].entity` on *clones* of live sets and then installs them; the
     /// manual `Clone` impl resets this field to `None` so a clone always
@@ -1412,6 +1414,16 @@ impl ParametricConstraintSet {
         &self,
         entity: Handle,
     ) -> impl Iterator<Item = &ParametricConstraint> {
+        self.constraints_referencing(entity)
+            .filter(|constraint| constraint.enabled)
+    }
+
+    /// Every constraint referencing `entity`, enabled or not — a read model
+    /// has to report a kept-but-suppressed constraint as well as a live one.
+    pub fn constraints_referencing(
+        &self,
+        entity: Handle,
+    ) -> impl Iterator<Item = &ParametricConstraint> {
         {
             let mut index = self.touch_index.borrow_mut();
             let stale = index
@@ -1422,10 +1434,13 @@ impl ParametricConstraintSet {
                     std::collections::HashMap::new();
                 for (position, constraint) in self.constraints.iter().enumerate() {
                     for reference in &constraint.refs {
-                        built
-                            .entry(reference.entity)
-                            .or_default()
-                            .push(position as u32);
+                        let positions = built.entry(reference.entity).or_default();
+                        // A constraint may name the same entity more than
+                        // once, adjacent or not; it is still one constraint
+                        // on that entity.
+                        if !positions.contains(&(position as u32)) {
+                            positions.push(position as u32);
+                        }
                     }
                 }
                 *index = Some((self.constraints.len(), built));
@@ -1441,7 +1456,6 @@ impl ParametricConstraintSet {
         positions
             .into_iter()
             .filter_map(move |position| self.constraints.get(position as usize))
-            .filter(|constraint| constraint.enabled)
     }
 
     /// Drops every constraint that references `entity` and returns the
@@ -3942,6 +3956,43 @@ mod tests {
             .unwrap()
             .enabled = false;
         assert_eq!(set.constraints_touching(h(1)).count(), 0);
+    }
+
+    #[test]
+    fn constraints_referencing_counts_disabled_and_each_constraint_once() {
+        let mut set = ParametricConstraintSet::new(ParametricScope::ModelSpace);
+        let id = set.add(
+            ConstraintKind::Coincident,
+            vec![ParametricRef::whole(h(1)), ParametricRef::whole(h(1))],
+            None,
+        );
+        set.constraints
+            .iter_mut()
+            .find(|c| c.id == id)
+            .unwrap()
+            .enabled = false;
+        // One constraint may name an entity on both sides of a third ref.
+        set.add(
+            ConstraintKind::DistanceDirected,
+            vec![
+                ParametricRef::whole(h(1)),
+                ParametricRef::whole(h(2)),
+                ParametricRef::whole(h(1)),
+            ],
+            None,
+        );
+        let kinds: Vec<_> = set
+            .constraints_referencing(h(1))
+            .map(|constraint| constraint.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ConstraintKind::Coincident,
+                ConstraintKind::DistanceDirected
+            ]
+        );
+        assert_eq!(set.constraints_touching(h(1)).count(), 1);
     }
 
     #[test]

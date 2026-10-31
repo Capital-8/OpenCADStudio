@@ -256,6 +256,32 @@ fn err(msg: impl std::fmt::Display) -> Value {
     json!({ "ok": false, "error": msg.to_string() })
 }
 
+/// The constraints that reference `entity`, as the entity read exposes them:
+/// the kind, every distinct participating handle, and whether the solver is
+/// still honouring it. Built from the live constraint sets — the structure a
+/// document's `ASSOC2DCONSTRAINTGROUP` members decode to on load — so the read
+/// names the same constraints the solver enforces.
+pub(crate) fn constraint_records_json(scene: &crate::scene::Scene, entity: codec::Handle) -> Value {
+    let mut records = Vec::new();
+    for set in &scene.parametric_constraints {
+        for constraint in set.constraints_referencing(entity) {
+            let mut participants: Vec<String> = Vec::new();
+            for reference in &constraint.refs {
+                let handle = format!("{:X}", reference.entity.value());
+                if !participants.contains(&handle) {
+                    participants.push(handle);
+                }
+            }
+            records.push(json!({
+                "kind": constraint.kind.label(),
+                "participants": participants,
+                "enabled": constraint.enabled,
+            }));
+        }
+    }
+    Value::Array(records)
+}
+
 fn v3(v: codec::types::Vector3) -> Value {
     json!([v.x, v.y, v.z])
 }
@@ -1462,6 +1488,12 @@ impl OpenCADStudio {
                     .get(&e.common().owner_handle)
                     .map_or(Value::Null, |name| json!(name.clone())),
             );
+            if detail != "summary" {
+                entity.as_object_mut().expect("entity JSON object").insert(
+                    "constraints".into(),
+                    constraint_records_json(&tab.scene, e.common().handle),
+                );
+            }
             if let Some(nearest) = nearest {
                 let object = entity.as_object_mut().expect("entity JSON object");
                 object.insert("distance".into(), json!(nearest.distance));
@@ -3563,6 +3595,120 @@ mod tests {
             .unwrap_or_else(|| panic!("the definition's line is missing: {q}"));
         assert_eq!(in_definition["owner"], format!("{definition:X}"), "{in_definition}");
         assert_ne!(in_definition["handle"], handles[1].as_str(), "{in_definition}");
+    }
+
+    #[test]
+    fn query_reports_the_constraints_that_reference_each_entity() {
+        use crate::scene::parametric_constraints::{
+            ConstraintKind, ParametricRef, ParametricScope,
+        };
+
+        let mut app = super::OpenCADStudio::new_for_test();
+        let _ = app.automation_op(r#"{"op":"new"}"#);
+        let _ = app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
+        let _ = app.automation_op(r#"{"op":"run","cmd":"LINE 0,5 10,5"}"#);
+        let i = app.active_tab;
+        let lines: Vec<codec::Handle> = {
+            let document = &app.tabs[i].scene.document;
+            let mut lines: Vec<_> = document
+                .entities()
+                .filter(|entity| matches!(entity, codec::EntityType::Line(_)))
+                .map(|entity| entity.common().handle)
+                .collect();
+            lines.sort_by_key(|handle| handle.value());
+            lines
+        };
+        let [first, second] = [lines[0], lines[1]];
+        {
+            let set = app.tabs[i]
+                .scene
+                .parametric_constraint_set_mut(ParametricScope::ModelSpace);
+            set.add(
+                ConstraintKind::Parallel,
+                vec![ParametricRef::whole(first), ParametricRef::whole(second)],
+                None,
+            );
+            set.add(
+                ConstraintKind::Vertical,
+                vec![ParametricRef::whole(second)],
+                None,
+            );
+            set.constraints.last_mut().expect("just added").enabled = false;
+        }
+        let hex = |handle: codec::Handle| format!("{:X}", handle.value());
+        let parallel = json!([{
+            "kind": "Parallel",
+            "participants": [hex(first), hex(second)],
+            "enabled": true
+        }]);
+
+        let q = app.automation_op(r#"{"op":"query","type":"Line","detail":"geometry"}"#);
+        let entities = q["entities"].as_array().expect("query entities");
+        let find = |handle: codec::Handle| {
+            entities
+                .iter()
+                .find(|entity| entity["handle"] == hex(handle).as_str())
+                .unwrap_or_else(|| panic!("{} is missing from {q}", hex(handle)))
+        };
+        assert_eq!(find(first)["constraints"], parallel, "{}", find(first));
+        assert_eq!(
+            find(second)["constraints"],
+            json!([
+                {
+                    "kind": "Parallel",
+                    "participants": [hex(first), hex(second)],
+                    "enabled": true
+                },
+                {
+                    "kind": "Vertical",
+                    "participants": [hex(second)],
+                    "enabled": false
+                }
+            ]),
+            "{}",
+            find(second)
+        );
+
+        // The record stream is the read that found no association at all.
+        let records = app.automation_op(r#"{"op":"records","collection":"entities"}"#);
+        let records = records["records"].as_array().expect("entity records");
+        let record = records
+            .iter()
+            .find(|record| record["handle"] == hex(first).as_str())
+            .unwrap_or_else(|| panic!("{} is missing from the record stream", hex(first)));
+        assert_eq!(record["constraints"], parallel, "{record}");
+
+        // Summary detail is identity only; constraints start at geometry.
+        let summary = app.automation_op(r#"{"op":"query","type":"Line","detail":"summary"}"#);
+        for entity in summary["entities"].as_array().expect("summary entities") {
+            assert!(entity.get("constraints").is_none(), "{entity}");
+        }
+
+        // A constraint naming the same entity twice still reports one
+        // participant.
+        app.tabs[i]
+            .scene
+            .parametric_constraint_set_mut(ParametricScope::ModelSpace)
+            .add(
+                ConstraintKind::Coincident,
+                vec![ParametricRef::whole(first), ParametricRef::whole(first)],
+                None,
+            );
+        let deduped = app.automation_op(r#"{"op":"query","type":"Line","detail":"geometry"}"#);
+        let entry = deduped["entities"]
+            .as_array()
+            .expect("query entities")
+            .iter()
+            .find(|entity| entity["handle"] == hex(first).as_str())
+            .expect("first line");
+        assert_eq!(
+            entry["constraints"],
+            json!([
+                {"kind": "Parallel", "participants": [hex(first), hex(second)], "enabled": true},
+                {"kind": "Coincident", "participants": [hex(first)], "enabled": true}
+            ]),
+            "{entry}"
+        );
     }
 
     #[test]

@@ -356,6 +356,19 @@ definition such as `*U1` for its children), so definition geometry can be
 filtered out of a drawing result. The capture's `visible_entities` /
 `annotations` records carry the same two fields.
 
+Every entity returned above `summary` detail also carries `constraints`: one
+entry per constraint the solver holds on it — `kind` (the constraint's
+canonical kind name, shared by the constraint commands and reports),
+`participants` (every distinct entity handle the constraint relates, in
+reference order) and `enabled` (`false` for a constraint kept but not solved).
+An empty array states that the entity carries no constraint. A `fields`
+projection that does not name `constraints` drops it, like any other property.
+The same array is on each `records` `entities` row, each `get_selection`
+entity, each `user_select` hand-over and each capture candidate, so the
+association the solver enforces is enumerable from every read surface. The
+`user_select` hand-over follows its `detail` too: `summary` leaves the array
+out.
+
 Companion reads: `entities` (alias), `layers`, `header`, `records`
 (paged, filterable database records), `record_schema` (generated type
 registry with write rules), `properties`, `measure` (length/area/bounds),
@@ -411,6 +424,7 @@ implicitly on write. An empty (or absent) `data` list removes the record.
 | `textsize`, `filletrad`, `pdmode`, `pdsize` | defaults for new content | ✓ |
 | `mirrtext` (`0`/`1`), `insunits`, `osmode` | behaviour flags | ✓ |
 | `extmin`, `extmax` | model-space extents `[x,y,z]` | read-only |
+| `constraintstatus` | constraint state of the active space: `{scope, constraint_count, enabled_count, dof}` — `scope` is the name of the block record in force (`*Model_Space` outside an editor), the two counts are constraint totals (all vs still solved), and `dof` is the solver's remaining degrees of freedom, `null` until it has solved that space | read-only |
 
 `{"op":"sysvar","set":{"ltscale":2.5}}` applies the whole object atomically
 (`unknown_sysvar` / `invalid_sysvar_value` refuse it all);

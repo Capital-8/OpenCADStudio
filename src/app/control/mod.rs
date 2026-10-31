@@ -3827,6 +3827,51 @@ mod tests {
     }
 
     #[test]
+    fn user_select_hands_over_constraints_from_geometry_detail_up() {
+        let mut app = OpenCADStudio::new_for_test();
+        app.main_window = Some(iced::window::Id::unique());
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,10"}));
+        request(
+            &mut app,
+            json!({"op":"user_select","request_id":"us-c","type":"LINE"}),
+        );
+        let handle = user_select_pick(&mut app, "LINE");
+        app.tabs[app.active_tab]
+            .scene
+            .parametric_constraint_set_mut(
+                crate::scene::parametric_constraints::ParametricScope::ModelSpace,
+            )
+            .add(
+                crate::scene::parametric_constraints::ConstraintKind::Fixed,
+                vec![crate::scene::parametric_constraints::ParametricRef::whole(
+                    codec::Handle::new(u64::from_str_radix(&handle, 16).unwrap()),
+                )],
+                None,
+            );
+        let _ = app.update(Message::CommandFinalize);
+        let done = user_select_result(&mut app, "us-c");
+        assert_eq!(
+            done["result"]["entities"][0]["constraints"],
+            json!([{"kind":"Fixed","participants":[handle],"enabled":true}]),
+            "{done}"
+        );
+
+        // A summary hand-over stays identity-only.
+        request(
+            &mut app,
+            json!({"op":"user_select","request_id":"us-cs","type":"LINE","detail":"summary"}),
+        );
+        user_select_pick(&mut app, "LINE");
+        let _ = app.update(Message::CommandFinalize);
+        let done = user_select_result(&mut app, "us-cs");
+        assert!(
+            done["result"]["entities"][0].get("constraints").is_none(),
+            "{done}"
+        );
+    }
+
+    #[test]
     fn user_select_filter_deselects_entities_outside_the_request() {
         let mut app = OpenCADStudio::new_for_test();
         app.main_window = Some(iced::window::Id::unique());
@@ -4127,6 +4172,25 @@ mod tests {
         let read = request(&mut app, json!({"op":"get_selection"}));
         assert_eq!(read["result"]["count"], 1);
         assert_eq!(read["result"]["entities"][0]["block"], Value::Null);
+        assert_eq!(read["result"]["entities"][0]["constraints"], json!([]));
+        app.tabs[app.active_tab]
+            .scene
+            .parametric_constraint_set_mut(
+                crate::scene::parametric_constraints::ParametricScope::ModelSpace,
+            )
+            .add(
+                crate::scene::parametric_constraints::ConstraintKind::Fixed,
+                vec![crate::scene::parametric_constraints::ParametricRef::whole(
+                    codec::Handle::new(u64::from_str_radix(&circle_handle, 16).unwrap()),
+                )],
+                None,
+            );
+        let read = request(&mut app, json!({"op":"get_selection"}));
+        assert_eq!(
+            read["result"]["entities"][0]["constraints"],
+            json!([{"kind": "Fixed", "participants": [circle_handle], "enabled": true}]),
+            "{read}"
+        );
     }
 
     #[test]

@@ -408,11 +408,16 @@ fn collection_records(
         "entities" => document
             .entities()
             .map(|entity| {
-                entity_record(
+                let mut value = entity_record(
                     entity,
                     scene.is_reference_only(entity.common().handle),
                     disabled_plugins,
-                )
+                )?;
+                value.as_object_mut().expect("record object").insert(
+                    "constraints".into(),
+                    super::automation::constraint_records_json(scene, entity.common().handle),
+                );
+                Ok(value)
             })
             .collect(),
         "objects" => {

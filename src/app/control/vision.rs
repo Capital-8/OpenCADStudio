@@ -330,6 +330,9 @@ pub(crate) fn compute_grounding(
                 "layer": cand.layer,
                 "owner": format!("{:X}", cand.owner.value()),
                 "space": cand.space,
+                "constraints": crate::app::automation::constraint_records_json(
+                    &tab.scene, cand.handle,
+                ),
                 "screen_pixel": cand.screen_pixel,
                 "screen_bounds": cand.screen_bounds,
                 "world_center": cand.world_center,
@@ -607,6 +610,79 @@ mod tests {
         let child = visible("SPACE_SRC");
         assert_ne!(child["owner"], model["owner"], "{model} {child}");
         assert_ne!(child["handle"], model["handle"], "{model} {child}");
+    }
+
+    #[test]
+    fn grounding_names_the_constraints_on_each_visible_entity() {
+        use crate::scene::parametric_constraints::{
+            ConstraintKind, ParametricRef, ParametricScope,
+        };
+
+        let mut app = OpenCADStudio::new_for_test();
+        app.automation_op(r#"{"op":"new"}"#);
+        app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
+        let line = app.automation_op(r#"{"op":"query","type":"Line","detail":"summary"}"#)
+            ["entities"][0]["handle"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let doc = app.automation_op(r#"{"protocol":1,"op":"state"}"#)["document_id"]
+            .as_u64()
+            .unwrap();
+        let defined = app.automation_op(&format!(
+            r#"{{"protocol":1,"op":"block_define","request_id":"gc1","document_id":{doc},"name":"CONST_DEF","base":[0,0,0],"handles":["{line}"]}}"#
+        ));
+        assert_eq!(defined["ok"], true, "{defined}");
+
+        let i = app.active_tab;
+        let definition = app.tabs[i]
+            .scene
+            .document
+            .block_records
+            .iter()
+            .find(|record| record.name == "CONST_DEF")
+            .expect("definition exists")
+            .handle;
+        let child = app.tabs[i]
+            .scene
+            .document
+            .entities()
+            .find(|entity| entity.common().owner_handle == definition)
+            .expect("the definition holds the line")
+            .common()
+            .handle;
+        app.tabs[i]
+            .scene
+            .parametric_constraint_set_mut(ParametricScope::Block(definition))
+            .add(
+                ConstraintKind::Vertical,
+                vec![ParametricRef::whole(child)],
+                None,
+            );
+        let child_hex = format!("{:X}", child.value());
+
+        app.tabs[i].scene.selection.borrow_mut().view.vp_size = (800.0, 600.0);
+        app.tabs[i].scene.fit_all();
+        let grounding = compute_grounding(&app, 800.0, 600.0, 800, 600);
+        let visible = grounding
+            .visible_entities
+            .iter()
+            .find(|entity| entity["space"] == "CONST_DEF")
+            .unwrap_or_else(|| {
+                panic!(
+                    "CONST_DEF is not grounded: {:?}",
+                    grounding.visible_entities
+                )
+            });
+        assert_eq!(
+            visible["constraints"],
+            json!([{
+                "kind": "Vertical",
+                "participants": [child_hex],
+                "enabled": true
+            }]),
+            "{visible}"
+        );
     }
 
     #[test]

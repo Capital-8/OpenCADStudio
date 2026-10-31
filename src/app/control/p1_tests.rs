@@ -132,6 +132,136 @@ fn sysvar_round_trips_and_refuses_unknowns() {
 }
 
 #[test]
+fn sysvar_reads_the_active_spaces_constraint_status() {
+    use crate::scene::parametric_constraints::{ConstraintKind, ParametricRef, ParametricScope};
+
+    let mut app = OpenCADStudio::new_for_test();
+    app.automation_op(r#"{"op":"new"}"#);
+    app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
+    let state = app.automation_op(r#"{"protocol":1,"op":"state"}"#);
+    let doc = state["document_id"].as_u64().unwrap();
+
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"cs0","document_id":{doc},"get":["constraintstatus"]}}"#
+    ));
+    assert_eq!(r["ok"], true, "{}", r["error"]);
+    let status = &r["result"]["values"]["constraintstatus"];
+    assert_eq!(status["scope"], "*Model_Space");
+    assert_eq!(status["constraint_count"], 0);
+    assert_eq!(status["enabled_count"], 0);
+    // The solver has not run yet, so the derived figure is not known.
+    assert_eq!(status["dof"], Value::Null);
+
+    let i = app.active_tab;
+    let line = app.tabs[i]
+        .scene
+        .document
+        .entities()
+        .next()
+        .expect("one line")
+        .common()
+        .handle;
+    {
+        let set = app.tabs[i]
+            .scene
+            .parametric_constraint_set_mut(ParametricScope::ModelSpace);
+        set.add(
+            ConstraintKind::Vertical,
+            vec![ParametricRef::whole(line)],
+            None,
+        );
+        set.add(
+            ConstraintKind::Horizontal,
+            vec![ParametricRef::whole(line)],
+            None,
+        );
+        set.constraints.last_mut().expect("just added").enabled = false;
+        set.dof = Some(7);
+    }
+
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"cs1","document_id":{doc},"get":["CONSTRAINTSTATUS"]}}"#
+    ));
+    assert_eq!(r["ok"], true, "{}", r["error"]);
+    let status = &r["result"]["values"]["constraintstatus"];
+    assert_eq!(status["constraint_count"], 2);
+    // A suppressed constraint still counts as present, but not as live.
+    assert_eq!(status["enabled_count"], 1);
+    assert_eq!(status["dof"], 7);
+
+    // Computed, so there is nothing to write.
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"cs2","document_id":{doc},"set":{{"CONSTRAINTSTATUS":1}}}}"#
+    ));
+    assert_eq!(r["ok"], false);
+    assert_eq!(r["code"], "unknown_sysvar");
+}
+
+#[test]
+fn sysvar_reads_a_block_definitions_constraint_status_while_editing_it() {
+    use crate::scene::parametric_constraints::{ConstraintKind, ParametricRef, ParametricScope};
+
+    let mut app = OpenCADStudio::new_for_test();
+    app.automation_op(r#"{"op":"new"}"#);
+    app.automation_op(r#"{"op":"run","cmd":"LINE 0,0 10,0"}"#);
+    let state = app.automation_op(r#"{"protocol":1,"op":"state"}"#);
+    let doc = state["document_id"].as_u64().unwrap();
+    let i = app.active_tab;
+    let line = app.tabs[i]
+        .scene
+        .document
+        .entities()
+        .next()
+        .expect("one line")
+        .common()
+        .handle;
+    let defined = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"block_define","request_id":"csb-def","document_id":{doc},"name":"STATUS_DEF","base":[0,0,0],"handles":["{:X}"]}}"#,
+        line.value()
+    ));
+    assert_eq!(defined["ok"], true, "{defined}");
+    let definition = app.tabs[i]
+        .scene
+        .document
+        .block_records
+        .get("STATUS_DEF")
+        .expect("new definition")
+        .handle;
+    app.tabs[i].scene.block_edit_block = Some(definition);
+    {
+        let set = app.tabs[i]
+            .scene
+            .parametric_constraint_set_mut(ParametricScope::Block(definition));
+        set.add(
+            ConstraintKind::Fixed,
+            vec![ParametricRef::whole(line)],
+            None,
+        );
+        set.dof = Some(2);
+    }
+
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"csb0","document_id":{doc},"get":["constraintstatus"]}}"#
+    ));
+    assert_eq!(r["ok"], true, "{}", r["error"]);
+    let status = &r["result"]["values"]["constraintstatus"];
+    assert_eq!(status["scope"], "STATUS_DEF");
+    assert_eq!(status["constraint_count"], 1);
+    assert_eq!(status["enabled_count"], 1);
+    assert_eq!(status["dof"], 2);
+
+    // Leaving the editor reads model space, whose own set is untouched.
+    app.tabs[i].scene.block_edit_block = None;
+    let r = app.automation_op(&format!(
+        r#"{{"protocol":1,"op":"sysvar","request_id":"csb1","document_id":{doc},"get":["constraintstatus"]}}"#
+    ));
+    assert_eq!(r["ok"], true, "{}", r["error"]);
+    let status = &r["result"]["values"]["constraintstatus"];
+    assert_eq!(status["scope"], "*Model_Space");
+    assert_eq!(status["constraint_count"], 0);
+}
+
+#[test]
 fn sysvar_batches_validate_atomically_and_undo_as_one_step() {
     let mut app = OpenCADStudio::new_for_test();
     app.automation_op(r#"{"op":"new"}"#);
