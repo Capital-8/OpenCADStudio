@@ -1345,6 +1345,7 @@ impl OpenCADStudio {
 
             "GCSMOOTH" => {
                 use crate::modules::parametric::SmoothConstraintCommand;
+                self.geom_constraint_last = "Smooth";
                 let handles = self.tabs[i].scene.selected_handles_in_order();
                 if handles.is_empty() {
                     let command = SmoothConstraintCommand::new();
@@ -1611,6 +1612,7 @@ impl OpenCADStudio {
                         "Horizontal constraint",
                     )
                 };
+                self.geom_constraint_last = axis;
                 let new_command = || {
                     if vertical {
                         HorizontalConstraintCommand::vertical()
@@ -1665,6 +1667,8 @@ impl OpenCADStudio {
                 use crate::modules::parametric::FixConstraintCommand;
                 use crate::scene::parametric_constraints::ConstraintKind;
 
+                self.geom_constraint_last = "Fix";
+
                 // One preselected whole curve applies at once (ribbon
                 // "select first, then click"); anything else goes through
                 // the reference's own point-or-object prompt.
@@ -1697,6 +1701,7 @@ impl OpenCADStudio {
 
             "CCONSTRAINT" | "GCCOINCIDENT" => {
                 use crate::modules::parametric::CoincidentConstraintCommand;
+                self.geom_constraint_last = "Coincident";
                 let new_cmd = CoincidentConstraintCommand::new();
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
@@ -1704,7 +1709,7 @@ impl OpenCADStudio {
 
             "GEOMCONSTRAINT" => {
                 use crate::modules::parametric::GeomConstraintCommand;
-                let new_cmd = GeomConstraintCommand::new();
+                let new_cmd = GeomConstraintCommand::new(self.geom_constraint_last);
                 self.command_line.push_info(&new_cmd.prompt());
                 self.tabs[i].active_cmd = Some(Box::new(new_cmd));
             }
@@ -1915,6 +1920,7 @@ impl OpenCADStudio {
                 use crate::command::CmdResult;
                 use crate::modules::parametric::PerpendicularConstraintCommand;
 
+                self.geom_constraint_last = "Perpendicular";
                 let handles = self.tabs[i].scene.selected_handles_in_order();
                 if handles.is_empty() {
                     let command = PerpendicularConstraintCommand::new();
@@ -1957,6 +1963,7 @@ impl OpenCADStudio {
                 use crate::command::CmdResult;
                 use crate::modules::parametric::TangentConstraintCommand;
 
+                self.geom_constraint_last = "Tangent";
                 let handles = self.tabs[i].scene.selected_handles_in_order();
                 if handles.is_empty() {
                     let command = TangentConstraintCommand::new();
@@ -1994,6 +2001,7 @@ impl OpenCADStudio {
             "ECONSTRAINT" | "GCEQUAL" => {
                 use crate::command::CmdResult;
                 use crate::modules::parametric::EqualConstraintCommand;
+                self.geom_constraint_last = "Equal";
                 // A live selection is the set the constraint is about: the
                 // umbrella dispatches the type while the picks are still in
                 // place, and the reference consumes a pickfirst selection
@@ -2028,6 +2036,11 @@ impl OpenCADStudio {
             }
 
             "PCONSTRAINT" | "LCONSTRAINT" | "NRCONSTRAINT" => {
+                match cmd {
+                    "PCONSTRAINT" => self.geom_constraint_last = "Parallel",
+                    "LCONSTRAINT" => self.geom_constraint_last = "Collinear",
+                    _ => {}
+                }
                 let handles = self.tabs[i].scene.selected_handles_in_order();
                 if handles.is_empty() {
                     use crate::modules::draw::select::SelectObjectsCommand;
@@ -2063,6 +2076,7 @@ impl OpenCADStudio {
                 use crate::command::CmdResult;
                 use crate::modules::parametric::ConcentricConstraintCommand;
 
+                self.geom_constraint_last = "Concentric";
                 let handles = self.tabs[i].scene.selected_handles_in_order();
                 if handles.is_empty() {
                     let command = ConcentricConstraintCommand::new();
@@ -2098,6 +2112,7 @@ impl OpenCADStudio {
             }
 
             "SYCONSTRAINT" => {
+                self.geom_constraint_last = "Symmetric";
                 let handles = self.tabs[i].scene.selected_handles_in_order();
                 if handles.is_empty() {
                     use crate::modules::parametric::SymmetricConstraintCommand;

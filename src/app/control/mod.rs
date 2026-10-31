@@ -3600,6 +3600,54 @@ mod tests {
         assert!(app.tabs[app.active_tab].active_cmd.is_none());
     }
 
+    /// The geometric umbrella's default follows the type used last, the way
+    /// the dimensional umbrella's does, instead of a fixed `Coincident`.
+    #[test]
+    fn geom_constraint_remembers_the_last_type_used() {
+        use crate::scene::parametric_constraints::{ConstraintKind, ParametricScope};
+
+        let mut app = OpenCADStudio::new_for_test();
+        request(&mut app, json!({"op":"new"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,0 10,0"}));
+        request(&mut app, json!({"op":"run","cmd":"LINE 0,5 10,5"}));
+        let lines: Vec<String> = request(&mut app, json!({"op":"query","type":"Line"}))["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entity| entity["handle"].as_str().unwrap().to_string())
+            .collect();
+        request(&mut app, json!({"op":"select","handles":[&lines[0]]}));
+        let applied = request(&mut app, json!({"op":"run","cmd":"GCHORIZONTAL"}));
+        assert_eq!(applied["ok"], true, "{applied}");
+
+        request(&mut app, json!({"op":"select","handles":[&lines[1]]}));
+        let umbrella = request(&mut app, json!({"op":"run","cmd":"GEOMCONSTRAINT"}));
+        assert_eq!(umbrella["status"], "waiting_input", "{umbrella}");
+        let prompt = umbrella["state"]["command"]["prompt"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            prompt.contains("<Horizontal>"),
+            "the umbrella remembers the type used last: {umbrella}"
+        );
+
+        // Enter takes that remembered type, not a fixed Coincident.
+        let accepted = request(&mut app, json!({"op":"input","kind":"enter"}));
+        assert_eq!(accepted["ok"], true, "{accepted}");
+        let horizontal = app.tabs[app.active_tab]
+            .scene
+            .parametric_constraint_set(ParametricScope::ModelSpace)
+            .map(|set| {
+                set.constraints
+                    .iter()
+                    .filter(|constraint| constraint.kind == ConstraintKind::Horizontal)
+                    .count()
+            })
+            .unwrap_or(0);
+        assert_eq!(horizontal, 2, "Enter applied the remembered type: {accepted}");
+    }
+
     #[test]
     fn command_discovery_explains_batch_and_interactive_use() {
         let mut app = OpenCADStudio::new_for_test();

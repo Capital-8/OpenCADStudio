@@ -975,6 +975,8 @@ pub(super) struct OpenCADStudio {
     pub constraint_form_annotational: bool,
     /// The dimensional constraint DIMCONSTRAINT offers by default: the last one used.
     pub dim_constraint_last: &'static str,
+    /// The geometric constraint GEOMCONSTRAINT offers by default: the last one used.
+    pub geom_constraint_last: &'static str,
     /// Set while a plugin drives the command line (`HostApi::execute_command`).
     /// Dispatching a plugin command from there would call back into the plugin
     /// that is still blocked waiting for this request, so plugin dispatch is
@@ -5627,6 +5629,7 @@ impl OpenCADStudio {
             constraint_bar_display: 3,
             constraint_form_annotational: false,
             dim_constraint_last: "Aligned",
+            geom_constraint_last: "Coincident",
             suppress_plugin_dispatch: false,
             plugin_request_active: false,
             constraint_bar_mode: 4095,
